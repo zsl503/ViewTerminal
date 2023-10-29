@@ -1,7 +1,7 @@
 # ViewTerminal
 
 ## 描述
-这是一个控制台下的页面显示框架，可以参考示例：https://github.com/zsl503/CommodityManagement
+这是一个控制台下的页面显示框架，可以参考示例：https://github.com/zsl503/CommodityManagement，其中LoginPage、MainPage等几个Page部分
 
 ## 使用方法
 ```C++
