@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #define WIN32_LEAN_AND_MEAN             // 从 Windows 头文件中排除极少使用的内容
 #include <windows.h>
 #include <stack>
@@ -32,7 +32,7 @@ namespace View
 		int width;
 		int height;
 		enum Type {
-			RED, REL, NAT, NAB
+			RED, REL, NAT, NAB, None
 		}type;	// 操作类型
 	};
 

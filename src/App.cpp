@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 
 using namespace View;
 App::App(int width, int height) :width(width), height(height)
@@ -99,7 +99,8 @@ View::PageBase* App::openPage(std::wstring name)
 
 void App::processDestroyed()
 {
-    switch (type)
+    auto tmpType = type;
+    switch (tmpType)
     {
     case RED:
     {
@@ -125,15 +126,17 @@ void App::processDestroyed()
     {
         openPage(newPage)->create();
         processDestroyed();
+        break;
     }
     case NAB:
     {
         if (pageStack.size() > 1)
         {
             pageStack.pop();
+            pageStack.top()->create();
+            processDestroyed();
         }
-        pageStack.top()->create();
-        processDestroyed();
+        break;
     }
     default:
         break;
@@ -145,7 +148,7 @@ void View::PageBase::initPage(
     App* app, std::wstring name, HANDLE outputHandle, HANDLE inputHandle
 )
 {
-    SetConsoleTitle(name.c_str());
+    this->name = name;
     this->app = app;
     this->outputHandle = outputHandle;
     this->inputHandle = inputHandle;
@@ -154,6 +157,12 @@ void View::PageBase::initPage(
 
 View::PageBase::~PageBase()
 {
+    // 确保监听已停止
+    isListen = false;
+
+    // 清空事件队列
+    FlushConsoleInputBuffer(inputHandle);
+    
     for (auto i : allComponents)
         if (i != NULL)
             delete i;
@@ -197,6 +206,7 @@ void View::PageBase::detachComponent(ComponentBase* com)
 void View::PageBase::create()
 {
     created();
+    SetConsoleTitleW((name.c_str()));
     for (auto i : allComponents)
     {
         i->draw();
@@ -220,67 +230,119 @@ void View::PageBase::update()
 
 void View::PageBase::destroy()
 {
-    clear();
+    // 先停止监听，防止事件循环继续处理事件
     isListen = false;
+    
+    // 清空控制台输入缓冲区
+    FlushConsoleInputBuffer(inputHandle);
+    // 清屏
+    clear();
 }
 
 void View::PageBase::clear()
 {
-    //system("cls");
-    COORD c = { 0,0 };
-    SetConsoleCursorPosition(outputHandle, c);
-    for (size_t i = 0; i < app->getHeight(); i++)
-    {
-        c.Y = i;
-        SetConsoleCursorPosition(outputHandle, c);
-        for (size_t j = 0; j < app->getWidth(); j++)
-        {
-            std::wcout << " ";
-        }
+    // 使用更高效的控制台清屏方法
+    HANDLE hConsole = outputHandle;
+    COORD coordScreen = { 0, 0 };
+    DWORD charsWritten;
+    WORD wd = FOREGROUND_INTENSITY; 
+    // 填充指定宽度和高度范围内的矩阵为空格
+    for (int y = 0; y < app->getHeight(); ++y) {
+        COORD coord = { 0, static_cast<SHORT>(y) };
+        FillConsoleOutputAttribute(hConsole, wd, app->getWidth(), coord, &charsWritten);
+        FillConsoleOutputCharacterW(hConsole, L' ', app->getWidth(), coord, &charsWritten);
     }
+
+    // 重置光标位置
+    SetConsoleCursorPosition(hConsole, coordScreen);
 }
+
+// void View::PageBase::clear()
+// {
+//     // 使用更高效的控制台清屏方法
+//     HANDLE hConsole = outputHandle;
+//     COORD coordScreen = { 0, 0 };
+//     DWORD cCharsWritten;
+//     CONSOLE_SCREEN_BUFFER_INFO csbi;
+    
+//     // 获取控制台信息
+//     GetConsoleScreenBufferInfo(hConsole, &csbi);
+//     DWORD dwConSize = csbi.dwSize.X * csbi.dwSize.Y;
+    
+//     // 填充整个屏幕为空格
+//     FillConsoleOutputCharacter(hConsole, ' ', dwConSize, coordScreen, &cCharsWritten);
+    
+//     // 恢复默认属性
+//     FillConsoleOutputAttribute(hConsole, csbi.wAttributes, dwConSize, coordScreen, &cCharsWritten);
+    
+//     // 重置光标位置
+//     SetConsoleCursorPosition(hConsole, coordScreen);
+// }
 
 void View::PageBase::eventListener()
 {
-    INPUT_RECORD	record;
-    DWORD			res;
-
+    INPUT_RECORD record;
+    DWORD res;
     View::MouseEvent mouE;
     View::KeyEvent keyE;
-    ComponentBase* p = NULL, * tmp = NULL;
+    ComponentBase* p = NULL;
+    
     while (isListen)
     {
-        ReadConsoleInput(inputHandle, &record, 1, &res);
-
-        if (record.EventType == MOUSE_EVENT)
-        {
-            mouE.point = View::Point(record.Event.MouseEvent.dwMousePosition);
-            switch (record.Event.MouseEvent.dwButtonState)
-            {
-            case FROM_LEFT_1ST_BUTTON_PRESSED:
-                mouE.type = record.Event.MouseEvent.dwEventFlags == DOUBLE_CLICK ?
-                    View::MouseEventType::LDOUBLECLICK : View::MouseEventType::LCLICK;
-                break;
-            case RIGHTMOST_BUTTON_PRESSED:
-                mouE.type = record.Event.MouseEvent.dwEventFlags == DOUBLE_CLICK ?
-                    View::MouseEventType::RDOUBLECLICK : View::MouseEventType::RCLICK;
-                break;
-            default:
-                mouE.type = View::MouseEventType::HOVER;
-                break;
+        // 非阻塞方式检查是否有输入事件
+        DWORD numEvents = 0;
+        GetNumberOfConsoleInputEvents(inputHandle, &numEvents);
+        
+        if (numEvents > 0) {
+            // 有事件要处理
+            if (PeekConsoleInput(inputHandle, &record, 1, &res) && res > 0) {
+                // 读取事件但不从队列中移除
+                ReadConsoleInput(inputHandle, &record, 1, &res);
+                
+                if (record.EventType == MOUSE_EVENT)
+                {
+                    mouE.point = View::Point(record.Event.MouseEvent.dwMousePosition);
+                    switch (record.Event.MouseEvent.dwButtonState)
+                    {
+                    case FROM_LEFT_1ST_BUTTON_PRESSED:
+                        mouE.type = record.Event.MouseEvent.dwEventFlags == DOUBLE_CLICK ?
+                            View::MouseEventType::LDOUBLECLICK : View::MouseEventType::LCLICK;
+                        break;
+                    case RIGHTMOST_BUTTON_PRESSED:
+                        mouE.type = record.Event.MouseEvent.dwEventFlags == DOUBLE_CLICK ?
+                            View::MouseEventType::RDOUBLECLICK : View::MouseEventType::RCLICK;
+                        break;
+                    default:
+                        mouE.type = View::MouseEventType::HOVER;
+                        break;
+                    }
+                    
+                    p = NULL;
+                    for (auto i : mouseComponents) {
+                        ComponentBase* result = i->onMouseEvent(mouE);
+                        if (result != NULL) {
+                            p = result;
+                        }
+                    }
+                }
+                
+                setFocus(p);
             }
-            for (auto i : mouseComponents)
-                p = (i->onMouseEvent(mouE)) == NULL ? p : tmp;
         }
-        else if (isListen)
-        {
-            for (auto i : keyComponents)
-                p = (i->onKeyEvent(keyE)) == NULL ? p : tmp;
+        else {
+            // 没有事件时休眠一小段时间，减少CPU占用
+            Sleep(1);
         }
-        setFocus(p);
-        if (isListen)
-            for (auto i : allComponents)
+        
+        // 更新所有组件，但限制更新频率
+        static DWORD lastUpdateTime = GetTickCount();
+        DWORD currentTime = GetTickCount();
+        
+        if (isListen && (currentTime - lastUpdateTime >= 16)) { // 约60fps
+            for (auto i : allComponents) {
                 i->update();
+            }
+            lastUpdateTime = currentTime;
+        }
     }
-
 }

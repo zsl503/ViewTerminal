@@ -3,6 +3,12 @@
 #include <Windows.h>
 #include <functional>
 #include <vector>
+
+#ifndef __COOD_INT
+#define __COOD_INT
+  typedef short COOD_INT;
+#endif
+
 namespace View
 {
 	class ComponentBase;
@@ -31,16 +37,16 @@ namespace View
 			SAME, UP, DOWN, LEFT, RIGHT, LEFTUP, LEFTDOWN, RIGHTUP, RIGHTDOWN
 		};
 
-		Point(int x = 0, int y = 0) :x(x), y(y) {}
+		Point(COOD_INT x = 0, COOD_INT y = 0) :x(x), y(y) {}
 		Point(const COORD& point) :x(point.X), y(point.Y) {}
 		Point(const Point& point) :x(point.x), y(point.y) {}
 		Relation getNewPointRelation(Point newPoint);
-		Point getAbsPoint(int reX, int reY);
+		Point getAbsPoint(COOD_INT reX, COOD_INT reY);
 		Point getAbsPoint(Point rePoint);
-		COORD getCOORD(int reX = 0, int  reY = 0);
-		unsigned short getAbsX(int reX = 0);
-		unsigned short getAbsY(int reX = 0);
-		unsigned short x, y;
+		COORD getCOORD(COOD_INT reX = 0, COOD_INT reY = 0);
+		COOD_INT getAbsX(COOD_INT reX = 0);
+		COOD_INT getAbsY(COOD_INT reX = 0);
+		COOD_INT x, y;
 	};
 
 	typedef struct MouseEvent
@@ -58,52 +64,52 @@ namespace View
 	class ComponentBase
 	{
 	public:
-		void draw();	// ÔÚ¿ØÖÆÌ¨»æÖÆÍ¼°¸
-		virtual ~ComponentBase();	//	Ïú»Ù
-		virtual void update();	// ¸üĞÂÍ¼°¸
-		virtual ComponentBase* onMouseEvent(MouseEvent&);	// Êó±êÊÂ¼ş
-		virtual ComponentBase* onKeyEvent(KeyEvent&);	// ¼üÅÌÊÂ¼ş
-		virtual void setColorStyle(Color, Color);	// ÉèÖÃÑÕÉ«
-		virtual void setFocus();	//	ÉèÖÃÎª½¹µã
-		virtual void unsetFocus();	// È¡Ïû½¹µã
-		bool isPointIn(Point);	// ÅĞ¶Ï×ø±êµãÊÇÔÚ×é¼şÄÚ
-		bool isPointIn(COORD);	// ÅĞ¶Ï×ø±êµãÊÇÔÚ×é¼şÄÚ
-		Point getPoint();	// »ñÈ¡×óÉÏ½Ç×ø±ê
-		Point getRDPoint();	// »ñÈ¡ÓÒÏÂ½Ç×ø±ê
-		size_t getWidth();	//»ñÈ¡¿í¶È
-		size_t getHeight();	//»ñÈ¡¸ß¶È
-		virtual void setPoint(Point);	// ÖØÖÃ»ù×¼×ø±ê
-		virtual void setSize(size_t, size_t);	// ÖØÖÃ´óĞ¡
-		virtual void setShow(bool);	// ÉèÖÃÊÇ·ñÔÚÒ³ÃæÖĞÏÔÊ¾
-		bool getShow();	// »ñÈ¡Ò³ÃæÏÔÊ¾ÉèÖÃ
+		void draw();	// åœ¨æ§åˆ¶å°ç»˜åˆ¶å›¾æ¡ˆ
+		virtual ~ComponentBase();	//	é”€æ¯
+		virtual void update();	// æ›´æ–°å›¾æ¡ˆ
+		virtual ComponentBase* onMouseEvent(MouseEvent&);	// é¼ æ ‡äº‹ä»¶
+		virtual ComponentBase* onKeyEvent(KeyEvent&);	// é”®ç›˜äº‹ä»¶
+		virtual void setColorStyle(Color, Color);	// è®¾ç½®é¢œè‰²
+		virtual void setFocus();	//	è®¾ç½®ä¸ºç„¦ç‚¹
+		virtual void unsetFocus();	// å–æ¶ˆç„¦ç‚¹
+		bool isPointIn(Point);	// åˆ¤æ–­åæ ‡ç‚¹æ˜¯åœ¨ç»„ä»¶å†…
+		bool isPointIn(COORD);	// åˆ¤æ–­åæ ‡ç‚¹æ˜¯åœ¨ç»„ä»¶å†…
+		Point getPoint();	// è·å–å·¦ä¸Šè§’åæ ‡
+		Point getRDPoint();	// è·å–å³ä¸‹è§’åæ ‡
+		size_t getWidth();	//è·å–å®½åº¦
+		size_t getHeight();	//è·å–é«˜åº¦
+		virtual void setPoint(Point);	// é‡ç½®åŸºå‡†åæ ‡
+		virtual void setSize(size_t, size_t);	// é‡ç½®å¤§å°
+		virtual void setShow(bool);	// è®¾ç½®æ˜¯å¦åœ¨é¡µé¢ä¸­æ˜¾ç¤º
+		bool getShow();	// è·å–é¡µé¢æ˜¾ç¤ºè®¾ç½®
 	protected:
-		void setChange();	// ÉèÖÃÒ³Ãæ¸üĞÂ×´Ì¬£¬µ÷ÓÃº¯Êıºó£¬×é¼ş»áÏìÓ¦ÏÂÒ»´Î¸üĞÂ
-		virtual void beginDraw() = 0;	// »æÖÆÇ°Ö´ĞĞ
-		virtual void drawBackground();	// »æÖÆ±³¾°
-		virtual void drawBorder();	// »æÖÆ±ß¿ò
-		virtual void clearDraw();	//Çå³ıÒ³Ãæ»æÖÆ
+		void setChange();	// è®¾ç½®é¡µé¢æ›´æ–°çŠ¶æ€ï¼Œè°ƒç”¨å‡½æ•°åï¼Œç»„ä»¶ä¼šå“åº”ä¸‹ä¸€æ¬¡æ›´æ–°
+		virtual void beginDraw() = 0;	// ç»˜åˆ¶å‰æ‰§è¡Œ
+		virtual void drawBackground();	// ç»˜åˆ¶èƒŒæ™¯
+		virtual void drawBorder();	// ç»˜åˆ¶è¾¹æ¡†
+		virtual void clearDraw();	//æ¸…é™¤é¡µé¢ç»˜åˆ¶
 		ComponentBase(HANDLE outputHandle, Point point, size_t width = 0, size_t height = 0
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: point(point), width(width), height(height), outputHandle(outputHandle),
 			defaultForeColor(defaultForeColor), defaultBackColor(defaultBackColor),
 			nowForeColor(defaultForeColor), nowBackColor(defaultBackColor),
 			foreColor(defaultForeColor), backColor(defaultBackColor) {}
-		size_t width, height;	// ¿í¶È¡¢¸ß¶È
-		Point point;	// »ù×¼×ø±êµã£¬Îª×óÉÏ·½×ø±ê
-		HANDLE outputHandle;	// Êä³ö¾ä±ú£¬±£´æ¿ØÖÆÌ¨¾ä±ú
-		Color nowForeColor;	// µ±Ç°ÏÔÊ¾µÄÎÄ±¾É«
-		Color nowBackColor;	//µ±Ç°ÏÔÊ¾µÄ±³¾°É«
-		Color backColor;	// µ±Ç°ÉèÖÃµÄ±³¾°É«
-		Color foreColor;	// µ±Ç°ÉèÖÃµÄÎÄ±¾É«
-		Color defaultForeColor;	// Ä¬ÈÏÎÄ±¾É«
-		Color defaultBackColor;	// Ä¬ÈÏ±³¾°É«
-		std::function<int(MouseEvent&, ComponentBase*)> mouseEventFun;	// Êó±êÊÂ¼ş»Øµ÷
-		std::function<int(KeyEvent&, ComponentBase*)> keyEventFun;	// ¼üÅÌÊÂ¼ş»Øµ÷
-		bool isChange = false;	// ÊÇ·ñÏìÓ¦¸üĞÂ
-		bool focus;	// ÊÇ·ñÎª½¹µã
+		size_t width, height;	// å®½åº¦ã€é«˜åº¦
+		Point point;	// åŸºå‡†åæ ‡ç‚¹ï¼Œä¸ºå·¦ä¸Šæ–¹åæ ‡
+		HANDLE outputHandle;	// è¾“å‡ºå¥æŸ„ï¼Œä¿å­˜æ§åˆ¶å°å¥æŸ„
+		Color nowForeColor;	// å½“å‰æ˜¾ç¤ºçš„æ–‡æœ¬è‰²
+		Color nowBackColor;	//å½“å‰æ˜¾ç¤ºçš„èƒŒæ™¯è‰²
+		Color backColor;	// å½“å‰è®¾ç½®çš„èƒŒæ™¯è‰²
+		Color foreColor;	// å½“å‰è®¾ç½®çš„æ–‡æœ¬è‰²
+		Color defaultForeColor;	// é»˜è®¤æ–‡æœ¬è‰²
+		Color defaultBackColor;	// é»˜è®¤èƒŒæ™¯è‰²
+		std::function<int(MouseEvent&, ComponentBase*)> mouseEventFun;	// é¼ æ ‡äº‹ä»¶å›è°ƒ
+		std::function<int(KeyEvent&, ComponentBase*)> keyEventFun;	// é”®ç›˜äº‹ä»¶å›è°ƒ
+		bool isChange = false;	// æ˜¯å¦å“åº”æ›´æ–°
+		bool focus;	// æ˜¯å¦ä¸ºç„¦ç‚¹
 	private:
-		bool isDrawed = false;	// µ±Ç°×é¼şÊÇ·ñÒÑÔÚÆÁÄ»ÉÏ»æÖÆ
-		bool isShow = true;	// ÊÇ·ñÏÔÊ¾×é¼ş
+		bool isDrawed = false;	// å½“å‰ç»„ä»¶æ˜¯å¦å·²åœ¨å±å¹•ä¸Šç»˜åˆ¶
+		bool isShow = true;	// æ˜¯å¦æ˜¾ç¤ºç»„ä»¶
 	};
 
 	class Text : public ComponentBase
@@ -177,6 +183,7 @@ namespace View
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK);
 		List(HANDLE outputHandle, std::vector<std::wstring> items, Point point, size_t width = 10, size_t itemHeight = 3
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK);
+		void setPoint(Point); 
 	protected:
 		void beginDraw();
 	private:
@@ -204,21 +211,34 @@ namespace View
 	class InputText :public Text
 	{
 	public:
-		InputText(HANDLE outputHandle, std::wstring text, size_t abX, size_t abY, size_t width = 10, size_t height = 3
+		InputText(HANDLE outputHandle, std::wstring placeholder, size_t abX, size_t abY, size_t width = 10, size_t height = 3
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
-			: Text(outputHandle, text, abX, abY, width, height, defaultForeColor, defaultBackColor) {}
+			: Text(outputHandle, placeholder, abX, abY, width, height, defaultForeColor, defaultBackColor), placeholder(placeholder), isPlaceholderVisible(true) {}
 
-		InputText(HANDLE outputHandle, std::wstring text, size_t width = 10, size_t height = 3
+		InputText(HANDLE outputHandle, std::wstring placeholder, Point point, size_t width = 10, size_t height = 3
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
-			: InputText(outputHandle, text, point.x, point.y, width, height, defaultForeColor, defaultBackColor) {}
+			: InputText(outputHandle, placeholder, point.x, point.y, width, height, defaultForeColor, defaultBackColor) {}
 
 		ComponentBase* onMouseEvent(MouseEvent&);
 		std::function<int(InputText*)> textChanged;
-	private:
-		std::function<int(MouseEvent&, ComponentBase*)> focusFun;
-	};
 
-	class LayoutBase : public ComponentBase
+	private:
+		std::wstring placeholder;
+		bool isPlaceholderVisible;
+		std::function<int(MouseEvent&, ComponentBase*)> focusFun;
+        std::vector<std::wstring> calculateTextLines(const std::wstring &text);
+        void renderText(const std::vector<std::wstring> &textLines);
+        int calculateCursorPosition(const std::vector<std::wstring> &textLines, int clickX, int clickY, int &currentLineIdx, int &accumulatedWidth);
+        void showAndPositionCursor(int accumulatedWidth, int currentLineIdx);
+        void handleDelete(std::wstring &newText, int &cursorPos, std::vector<std::wstring> &textLines, int &currentLineIdx, int &linePos, bool isBackspace);
+        void updateLineAndPosition(const std::vector<std::wstring> &textLines, int cursorPos, int &currentLineIdx, int &linePos);
+        int calculateCursorDisplayPosition(const std::vector<std::wstring> &textLines, int currentLineIdx, int linePos);
+        bool handleKeyEvent(KEY_EVENT_RECORD ker, std::wstring &newText, std::wstring &currentText, int &cursorPos, std::vector<std::wstring> &textLines, int &currentLineIdx, int &linePos, bool &editing);
+        bool handleCharacterInput(KEY_EVENT_RECORD ker, std::wstring &newText, int &cursorPos, std::vector<std::wstring> &textLines, int &currentLineIdx, int &linePos);
+                                  
+    };
+
+    class LayoutBase : public ComponentBase
 	{
 	public:
 		LayoutBase(HANDLE outputHandle, size_t abX, size_t abY, size_t width, size_t height
@@ -228,7 +248,7 @@ namespace View
 		LayoutBase(HANDLE outputHandle, Point point, size_t width, size_t height
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: LayoutBase(outputHandle, point.x, point.y, width, height, defaultForeColor, defaultBackColor) {}
-		virtual void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
+		// virtual void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
 		virtual bool addComponent(ComponentBase*);
 		virtual bool removeComponent(ComponentBase*);
 		virtual void clear();
@@ -242,8 +262,8 @@ namespace View
 	protected:
 		void beginDraw();
 		std::vector<ComponentBase*> allComponents;
-		std::vector<ComponentBase*> mouseComponents;
-		std::vector<ComponentBase*> keyComponents;
+		// std::vector<ComponentBase*> mouseComponents;
+		// std::vector<ComponentBase*> keyComponents;
 	};
 
 	class Span :public LayoutBase
@@ -257,7 +277,7 @@ namespace View
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: Span(outputHandle, point.x, point.y, width, height, space, defaultForeColor, defaultBackColor) {}
 		void setPadding(unsigned short top = 0, unsigned short right = 0, unsigned short bottom = 0, unsigned short left = 0);
-		void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
+		// void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
 		bool addComponent(ComponentBase*);
 		bool removeComponent(ComponentBase*);
 		void setSpace(size_t space);
@@ -279,7 +299,7 @@ namespace View
 		Div(HANDLE outputHandle, Point point, size_t width, size_t height, size_t space = 0
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: Div(outputHandle, point.x, point.y, width, height, space, defaultForeColor, defaultBackColor) {}
-		void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
+		// void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
 		bool addComponent(ComponentBase*);
 		bool removeComponent(ComponentBase*);
 		void setSpace(size_t space);
@@ -291,6 +311,7 @@ namespace View
 		size_t currentHeight = 0;
 		size_t space;
 	};
+
 	std::vector<std::wstring> split(const std::wstring& in, const std::wstring& delim);
 	std::string UnicodeToANSI(const std::wstring& wstr);
 }
