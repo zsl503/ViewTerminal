@@ -18,23 +18,44 @@ namespace View
 		void reLaunch(std::wstring);	// 关闭所有页面，跳转到指定页面
 		void navigateTo(std::wstring);	// 直接跳转到指定页面
 		void navigateBack();	// 返回上一个页面
-		void registerPages(std::map<std::wstring, PageBase*>&);	// 注册页面
+		void registerPages(std::map<std::wstring, std::unique_ptr<View::PageBase>>& route);	// 注册页面
 		int getWidth();
 		int getHeight();
 	private:
 		void processDestroyed();	// 销毁页面后执行的操作，通常为打开下一个页面
-		std::stack<PageBase*> pageStack;	// 页面栈
-		std::map<std::wstring, PageBase*> route;	// 路由表
+		std::stack<View::PageBase*> pageStack;	// 页面栈
+		std::map<std::wstring, std::unique_ptr<View::PageBase>> route;	// 路由表
 		HANDLE outputHandle;	// 输入句柄
 		HANDLE inputHandle;		// 输出句柄
 		std::wstring newPage;
-		PageBase* openPage(std::wstring name);	// 打开新页面
+		std::unique_ptr<View::PageBase>& openPage(std::wstring name);	// 打开新页面
 		int width;
 		int height;
 		enum Type {
 			RED, REL, NAT, NAB, None
 		}type;	// 操作类型
 	};
+    // 定义一个可进行隐式转换的组合器结构
+    // struct ComponentCombinator {
+    //     std::vector<ComponentBase*> components;
+        
+    //     // 允许从任何 ComponentBase 派生类的指针隐式转换
+    //     ComponentCombinator(ComponentBase* com = nullptr) {
+    //         if(com) components.push_back(com);
+    //     }
+        
+    //     // 组合器的组合操作
+    //     ComponentCombinator operator|(ComponentBase* right) const {
+    //         ComponentCombinator result = *this;
+    //         if(right) result.components.push_back(right);
+    //         return result;
+    //     }
+    // };
+
+    // 全局运算符重载，用于两个组件的组合
+    // inline ComponentCombinator operator|(ComponentBase* left, ComponentBase* right) {
+    //     return ComponentCombinator(left) | right;
+    // }
 
 	class PageBase
 	{
@@ -51,7 +72,7 @@ namespace View
 		virtual void mounted() {}	// 绘制后执行
 		virtual void destroyed() {}	// 销毁后执行
 		void setFocus(ComponentBase* com);	// 设置焦点组件
-		void addComponent(ComponentBase*);	// 添加组件
+		// void addComponent(ComponentBase*);	// 添加组件
 		void removeComponent(ComponentBase*);	// 移除并销毁组件
 		void detachComponent(ComponentBase*);	// 移除但不销毁组件
 		// 初始化页面
@@ -59,6 +80,12 @@ namespace View
 		virtual void initComponents() = 0;	// 初始化组件
 		HANDLE outputHandle;	// 输出句柄
 		HANDLE inputHandle;		//输入句柄
+	
+		// 重载addComponent以支持组合器
+		PageBase& addComponent(ComponentBase*);
+		// 原有的单组件添加方法保持不变
+
+
 	protected:
 		App* app = NULL;	// App指针，管理全局信息
 	private:
@@ -69,4 +96,5 @@ namespace View
 		std::wstring name;	// 页面名称
 		void eventListener();	// 开始监听
 	};
+
 }

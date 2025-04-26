@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "App.h"
 
 using namespace View;
 App::App(int width, int height) :width(width), height(height)
@@ -78,21 +79,21 @@ void View::App::navigateBack()
     pageStack.top()->destroy();
 }
 
-void App::registerPages(std::map<std::wstring, View::PageBase*>& route)
+void App::registerPages(std::map<std::wstring, std::unique_ptr<View::PageBase>>& route)
 {
-    this->route = route;
+    this->route = std::move(route);
 }
 
-View::PageBase* App::openPage(std::wstring name)
+std::unique_ptr<View::PageBase>& App::openPage(std::wstring name)
 {
-    std::map<std::wstring, View::PageBase*>::iterator iter = route.find(name);
+    auto iter = route.find(name);
     if (iter != route.end()) {
-        pageStack.push(route[name]);
-        route[name]->initPage(this, name, outputHandle, inputHandle);
-        return route[name];
+        pageStack.push(iter->second.get());
+        iter->second->initPage(this, name, outputHandle, inputHandle);
+        return iter->second;
     }
     else {
-        throw;
+        throw std::runtime_error("Page not found: " + std::string(name.begin(), name.end()));
     }
 }
 
@@ -180,13 +181,14 @@ void View::PageBase::registerComponents(
     this->keyComponents = keyComponents;
 }
 
-void View::PageBase::addComponent(ComponentBase* com)
+PageBase &View::PageBase::addComponent(ComponentBase* com)
 {
-    allComponents.insert(com);
-    mouseComponents.insert(com);
-    keyComponents.insert(com);
+    if (!com) return *this;
+    allComponents.insert(com); 
+    mouseComponents.insert(com); 
+    keyComponents.insert(com); 
+    return *this;
 }
-
 void View::PageBase::removeComponent(ComponentBase* com)
 {
     allComponents.erase(com);

@@ -187,7 +187,7 @@ namespace View
 	protected:
 		void beginDraw();
 	private:
-		std::vector<Button*> buttons;
+		std::vector<std::shared_ptr<View::Button>> buttons;
 	};
 
 	class Line : public ComponentBase
@@ -249,7 +249,7 @@ namespace View
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: LayoutBase(outputHandle, point.x, point.y, width, height, defaultForeColor, defaultBackColor) {}
 		// virtual void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
-		virtual bool addComponent(ComponentBase*);
+		virtual bool addComponent(std::shared_ptr<ComponentBase>);
 		virtual bool removeComponent(ComponentBase*);
 		virtual void clear();
 		void setShow(bool);
@@ -261,7 +261,7 @@ namespace View
 
 	protected:
 		void beginDraw();
-		std::vector<ComponentBase*> allComponents;
+		std::vector<std::shared_ptr<ComponentBase>> allComponents;
 		// std::vector<ComponentBase*> mouseComponents;
 		// std::vector<ComponentBase*> keyComponents;
 	};
@@ -278,7 +278,7 @@ namespace View
 			: Span(outputHandle, point.x, point.y, width, height, space, defaultForeColor, defaultBackColor) {}
 		void setPadding(unsigned short top = 0, unsigned short right = 0, unsigned short bottom = 0, unsigned short left = 0);
 		// void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
-		bool addComponent(ComponentBase*);
+		bool addComponent(std::shared_ptr<ComponentBase>);
 		bool removeComponent(ComponentBase*);
 		void setSpace(size_t space);
 		void clear();
@@ -300,7 +300,7 @@ namespace View
 			, Color defaultForeColor = Color::WHITE, Color defaultBackColor = Color::BLACK)
 			: Div(outputHandle, point.x, point.y, width, height, space, defaultForeColor, defaultBackColor) {}
 		// void registerComponents(std::vector<ComponentBase*>&, std::vector<ComponentBase*>&, std::vector<ComponentBase*>&);
-		bool addComponent(ComponentBase*);
+		bool addComponent(std::shared_ptr<ComponentBase>);
 		bool removeComponent(ComponentBase*);
 		void setSpace(size_t space);
 		void setPadding(unsigned short top = 0, unsigned short right = 0, unsigned short bottom = 0, unsigned short left = 0);

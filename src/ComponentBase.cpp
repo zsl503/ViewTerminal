@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "ComponentBase.h"
+#include <memory> // 添加 <memory> 头文件
+#include <algorithm> // 添加 <algorithm> 头文件
 #pragma warning( disable : 4996)
 // std::wstring版本
 std::vector<std::wstring> View::split(const std::wstring& in, const std::wstring& delim) {
@@ -26,31 +28,6 @@ std::string View::UnicodeToANSI(const std::wstring& wstr)
 }
 
 /*-----------------Point-----------------*/
-// View::Point View::Text::drawLine(std::wstring text, Point point, bool& isFinish)
-// {
-//     size_t outLineLen = 0, line = 0;
-//     SetConsoleCursorPosition(outputHandle, point.getCOORD());
-//     for (int i = 0; i < text.size(); i++)
-//     {
-//         int len = UnicodeToANSI(text.substr(i, 1)).length();
-//         if (width - outLineLen < len)
-//         {
-//             outLineLen = 0;
-//             line++;
-//             SetConsoleCursorPosition(outputHandle, point.getCOORD(0, line));
-//         }
-//         if (point.getAbsY(line) > this->point.getAbsY(height - 1))
-//         {
-//             SetConsoleCursorPosition(outputHandle, this->point.getCOORD(width - 3, height - 1));
-//             std::wcout << L"...";
-//             return point.getAbsPoint(outLineLen, line);
-//         }
-//         std::wcout << text[i];
-//         outLineLen += len;
-//     }
-//     isFinish = true;
-//     return point.getAbsPoint(outLineLen, line);
-// }
 
 View::Point::Relation View::Point::getNewPointRelation(Point newPoint)
 {
@@ -567,9 +544,9 @@ View::List::List(HANDLE outputHandle, std::vector<std::wstring> items, Point poi
 {
     height = items.size() * itemHeight;
     COOD_INT y = 0;
-    for (auto i : items)
+    for (const auto& i : items)
     {
-        buttons.push_back(new View::Button(outputHandle, i, point.getAbsPoint(0, y), width, itemHeight));
+        buttons.emplace_back(std::make_unique<View::Button>(outputHandle, i, point.getAbsPoint(0, y), width, itemHeight));
         y += (itemHeight-1);
     }
 }
@@ -577,7 +554,7 @@ View::List::List(HANDLE outputHandle, std::vector<std::wstring> items, Point poi
 void View::List::setPoint(Point point)
 {
     int dx = point.x - this->point.x, dy = point.y - this->point.y;
-    for (auto i : buttons)
+    for (auto& i : buttons)
     {
         i->setPoint(i->getPoint().getAbsPoint(dx, dy));
     }
@@ -589,7 +566,7 @@ void View::List::beginDraw()
     COORD c = point.getCOORD();
     DWORD charsWritten;
     Point p;
-    for (auto button : buttons){
+    for (auto& button : buttons){
         button->draw();
     }
     for (size_t i = 0; i < buttons.size() - 1; i++)
@@ -606,11 +583,6 @@ void View::List::beginDraw()
 
 View::List::~List()
 {
-    for (auto i : buttons)
-    {
-        delete i;
-        i = NULL;
-    }
     ComponentBase::~ComponentBase();
 }
 
@@ -647,7 +619,7 @@ std::vector<std::wstring> View::InputText::calculateTextLines(const std::wstring
     for (size_t i = 0; i < text.length(); i++) {
         int charWidth = UnicodeToANSI(text.substr(i, 1)).length();
         if (lineWidth + charWidth > width - 1) {  // 留出一些边距
-            textLines.push_back(currentLine);
+            textLines.emplace_back(currentLine);
             currentLine.clear();
             lineWidth = 0;
         }
@@ -655,7 +627,7 @@ std::vector<std::wstring> View::InputText::calculateTextLines(const std::wstring
         lineWidth += charWidth;
     }
     if (!currentLine.empty()) {
-        textLines.push_back(currentLine);
+        textLines.emplace_back(currentLine);
     }
     
     return textLines;
@@ -981,33 +953,32 @@ void View::LayoutBase::setShow(bool show)
 //     this->keyComponents = keyComponents;
 // }
 
-bool View::LayoutBase::addComponent(ComponentBase* com)
+bool View::LayoutBase::addComponent(std::shared_ptr<ComponentBase> com)
 {
-    allComponents.push_back(com);
+    if (!com) return false;
+    ComponentBase* comPtr = com.get();
     com->setPoint(point.getAbsPoint(com->getPoint()));
+    allComponents.emplace_back(com);
     return true;
 }
 
-bool View::LayoutBase::removeComponent(ComponentBase* com)
+bool View::LayoutBase::removeComponent(ComponentBase* comPtr)
 {
-    std::vector<ComponentBase*>::iterator iter = std::find(allComponents.begin(), allComponents.end(), com);
-    if (iter != allComponents.end())
+    auto iter = std::find_if(allComponents.begin(), allComponents.end(),
+                             [comPtr](const std::shared_ptr<ComponentBase>& p) {
+                                 return p.get() == comPtr;
+                             });
+
+    if (iter != allComponents.end()) {
         allComponents.erase(iter);
-    // iter = std::find(mouseComponents.begin(), mouseComponents.end(), com);
-    // if (iter != mouseComponents.end())
-    //     mouseComponents.erase(iter);
-    // iter = std::find(keyComponents.begin(), keyComponents.end(), com);
-    // if (iter != keyComponents.end())
-    //     keyComponents.erase(iter);
-    //if(com != NULL)
-    delete com;
-    // com = NULL;
-    return true;
+        return true;
+    }
+    return false;
 }
 
 void View::LayoutBase::beginDraw()
 {
-    for (auto i : allComponents)
+    for (auto& i : allComponents)
     {
         i->draw();
     }
@@ -1019,7 +990,6 @@ void View::LayoutBase::update()
     {
         if (getShow())
         {
-            //clearDraw();
             draw();
         }
         else
@@ -1027,7 +997,7 @@ void View::LayoutBase::update()
         isChange = false;
     }
     else
-        for (auto i : allComponents)
+        for (auto& i : allComponents)
         {
             i->update();
         }
@@ -1036,7 +1006,7 @@ void View::LayoutBase::update()
 void View::LayoutBase::setPoint(Point point)
 {
     int dx = point.x - this->point.x, dy = point.y - this->point.y;
-    for (auto i : allComponents)
+    for (auto& i : allComponents)
     {
         i->setPoint(i->getPoint().getAbsPoint(dx, dy));
     }
@@ -1046,43 +1016,34 @@ void View::LayoutBase::setPoint(Point point)
 
 void View::LayoutBase::clear()
 {
-    for (auto i : allComponents)
-    {
-        delete i;
-        i = NULL;
-    }
     allComponents.clear();
-    // mouseComponents.clear();
-    // keyComponents.clear();
 }
 
 View::LayoutBase::~LayoutBase()
 {
-    clear();
 }
 
 View::ComponentBase* View::LayoutBase::onMouseEvent(MouseEvent& e)
 {
-    // Todo: Some problem here
     if (!getShow())
         return NULL;
-    ComponentBase* p = NULL, * tmp = NULL;
-    for (auto i : allComponents) {
-        tmp = i->onMouseEvent(e);
+    ComponentBase* p = NULL;
+    for (auto& i : allComponents) {
+        ComponentBase* tmp = i->onMouseEvent(e);
         if (tmp != NULL) {
-            p = tmp;  // 保存非NULL的返回值
+            p = tmp;
         }
     }
-    return p;  // 返回最后一个响应的组件
+    return p;
 }
 
 View::ComponentBase* View::LayoutBase::onKeyEvent(KeyEvent& e)
 {
     if (!getShow())
         return NULL;
-    
+
     ComponentBase* p = NULL;
-    for (auto i : allComponents) {
+    for (auto& i : allComponents) {
         ComponentBase* tmp = i->onKeyEvent(e);
         if (tmp != NULL) {
             p = tmp;  // 保存非NULL的返回值
@@ -1097,39 +1058,49 @@ void View::Span::setPadding(unsigned short top, unsigned short right, unsigned s
 {
     padding[0] = top, padding[1] = right, padding[2] = bottom, padding[3] = left;
     currentWidth = padding[3];
-    for (auto com : allComponents)
+    for (auto& com : allComponents)
     {
         com->setPoint(point.getAbsPoint(currentWidth, padding[0]));
         currentWidth += (com->getWidth() + space);
     }
 }
 
-bool View::Span::addComponent(ComponentBase* com)
+bool View::Span::addComponent(std::shared_ptr<ComponentBase> com)
 {
-    if (currentWidth + com->getWidth() + space > width)
+    if (!com || currentWidth + com->getWidth() + space > width)
         return false;
-    LayoutBase::addComponent(com);
-    com->setPoint(point.getAbsPoint(currentWidth, padding[0]));
-    currentWidth += (com->getWidth() + space);
-    return true;
+    ComponentBase* comPtr = com.get();
+    if (LayoutBase::addComponent(std::move(com)))
+    {
+        comPtr->setPoint(point.getAbsPoint(currentWidth, padding[0]));
+        currentWidth += (comPtr->getWidth() + space);
+        return true;
+    }
+    return false;
 }
 
 void View::Span::clear()
 {
     LayoutBase::clear();
-    currentWidth = 0;
+    currentWidth = padding[3];
 }
 
 bool View::Span::removeComponent(ComponentBase* com)
-{
-    currentWidth -= (com->getWidth() + space);
-    return LayoutBase::removeComponent(com);
+{   
+    if (!com) return false;
+    int tmp = com->getWidth();
+    if(LayoutBase::removeComponent(com)){
+        currentWidth -= (tmp + space);
+        return true;
+    }
+    return false;
 }
 
 void View::Span::setSpace(size_t space)
 {
+    this->space = space;
     currentWidth = padding[3];
-    for (auto com : allComponents)
+    for (auto& com : allComponents)
     {
         com->setPoint(point.getAbsPoint(currentWidth, padding[0]));
         currentWidth += (com->getWidth() + space);
@@ -1156,26 +1127,37 @@ void View::Span::setSpace(size_t space)
 
 /*-----------------Div-----------------*/
 
-bool View::Div::addComponent(ComponentBase* com)
+bool View::Div::addComponent(std::shared_ptr<ComponentBase> com)
 {
-    if (currentHeight + com->getHeight() + space > height)
+    if (!com || currentHeight + com->getHeight() + space > height)
         return false;
-    LayoutBase::addComponent(com);
-    com->setPoint(point.getAbsPoint(padding[3], currentHeight));
-    currentHeight += (com->getHeight() + space);
-    return true;
+    ComponentBase* comPtr = com.get();
+    if (LayoutBase::addComponent(std::move(com)))
+    {
+        comPtr->setPoint(point.getAbsPoint(padding[3], currentHeight));
+        currentHeight += (comPtr->getHeight() + space);
+        return true;
+    }
+    return false;
 }
 
 bool View::Div::removeComponent(ComponentBase* com)
 {
-    currentHeight -= (com->getHeight() + space);
-    return LayoutBase::removeComponent(com);
+    if (!com) return false;
+    int tmp = com->getHeight();
+    if (LayoutBase::removeComponent(com))
+    {
+        currentHeight -= (tmp + space);
+        return true;
+    }
+    return false;
 }
 
 void View::Div::setSpace(size_t space)
 {
+    this->space = space;
     currentHeight = padding[0];
-    for (auto com : allComponents)
+    for (auto& com : allComponents)
     {
         com->setPoint(point.getAbsPoint(padding[3], currentHeight));
         currentHeight += (com->getHeight() + space);
@@ -1185,31 +1167,14 @@ void View::Div::setSpace(size_t space)
 void View::Div::clear()
 {
     LayoutBase::clear();
-    currentHeight = 0;
+    currentHeight = padding[0];
 }
-
-// void View::Div::registerComponents(
-//     std::vector<ComponentBase*>& allComponents,
-//     std::vector<ComponentBase*>& mouseComponents,
-//     std::vector<ComponentBase*>& keyComponents
-// )
-// {
-//     this->mouseComponents = mouseComponents;
-//     this->keyComponents = keyComponents;
-//     for (auto i : allComponents)
-//     {
-//         if (!addComponent(i))
-//         {
-//             LayoutBase::removeComponent(i);
-//         }
-//     }
-// }
 
 void View::Div::setPadding(unsigned short top, unsigned short right, unsigned short bottom, unsigned short left)
 {
     padding[0] = top, padding[1] = right, padding[2] = bottom, padding[3] = left;
     currentHeight = padding[0];
-    for (auto com : allComponents)
+    for (auto& com : allComponents)
     {
         com->setPoint(point.getAbsPoint(padding[3], currentHeight));
         currentHeight += (com->getHeight() + space);
