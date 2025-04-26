@@ -17,12 +17,11 @@ public:
 
         // Button to navigate to demo page
         auto demoButton = new View::Button(outputHandle, L"进入 Demo 页面", 5, 12, 20, 3, View::Color::WHITE, View::Color::BLUE);
-        // 获取裸指针以设置回调，但不拥有它
-        // View::Button* demoButtonPtr = demoButton.get();
-        demoButton->onClickFun = [this](View::MouseEvent& e, View::ComponentBase* com) -> int {
+        
+        // 使用新的事件系统
+        demoButton->addEventListener(View::EventType::CLICK, [this](View::EventArgs* args) {
             app->navigateTo(L"allComponents");
-            return 1;
-        };
+        });
 
         // Register components
         addComponent(title);
@@ -38,17 +37,25 @@ public:
     void initComponents() override {
         // Button Component
         auto button = std::make_shared<View::Button>(outputHandle, L"返回首页", View::Point{0, 0}, 15, 3, View::Color::WHITE, View::Color::BLUE);
-        // 获取裸指针以设置回调
-        button->onClickFun = [this](View::MouseEvent& e, View::ComponentBase* com) -> int {
+        
+        // 使用新的事件系统
+        button->addEventListener(View::EventType::CLICK, [this](View::EventArgs* args) {
             app->navigateBack();
-            return 1;
-        };
+        });
 
         // InputText Component
         auto inputText = std::make_shared<View::InputText>(outputHandle, L"Enter Text", View::Point{5, 0}, 30, 3, View::Color::BRIGHTWHITE);
+        
+        // 使用新的事件系统监听值变化
+        inputText->addEventListener(View::EventType::VALUE_CHANGE, [](View::EventArgs* args) {
+            auto valueArgs = static_cast<View::ValueChangedEventArgs*>(args);
+            auto oldText = std::any_cast<std::wstring>(valueArgs->getOldValue());
+            auto newText = std::any_cast<std::wstring>(valueArgs->getNewValue());
+            // 处理文本变化
+        });
+
         // List Component
         std::vector<std::wstring> items = {L"Item 1", L"Item 2", L"Item 3"};
-        // 注意：List 构造函数内部管理其 Button，所以这里创建 List 本身即可
         auto list = new View::List(outputHandle, items, View::Point{40, 0}, 30, 3);
 
         // Line Component
@@ -67,17 +74,15 @@ public:
         // Div Layout
         auto div0 = new View::Div(outputHandle, View::Point{0, 0}, 160, 80);
         div0->addComponent(std::make_shared<View::Text>(outputHandle, L"This is a Text Component", View::Point{0,0}, 30));
-        // 将之前创建的 unique_ptr 移动到 div0 中
         div0->addComponent(inputText);
         div0->addComponent(line);
-        // div0->addComponent(std::move(list)); // list 被添加到页面根级，而不是 div0
         div0->addComponent(span);
         div0->addComponent(div1);
-        div0->addComponent(button); // 将 button 移动到 div0
+        div0->addComponent(button);
 
         // 将 list 和 div0 添加到页面
-        addComponent(list); // list 被添加到页面根级，而不是 div0
-        addComponent(div0); // div0 被添加到页面根级
+        addComponent(list);
+        addComponent(div0);
     }
 };
 
@@ -89,13 +94,8 @@ int main() {
     route[L"welcome"] = std::make_unique<WelcomePage>();
     route[L"allComponents"] = std::make_unique<AllComponentsPage>();
 
-
-    // Register pages (假设 App::registerPages 现在接受 map<wstring, unique_ptr<PageBase>>)
-    // 注意：如果 App::registerPages 仍然需要裸指针，你需要调整这里的逻辑，
-    // 可能需要传递裸指针并确保 App 不会 delete 它们，或者 App 提供一个接受 unique_ptr 的方法。
-    // 这里假设 App::registerPages 被更新以接受并可能接管 unique_ptr 的所有权。
-    // 如果 App::registerPages 仅注册裸指针，则 route map 需要保留所有权。
-    app.registerPages(route); // 传递 map 的引用或值，取决于 registerPages 的设计
+    // Register pages
+    app.registerPages(route);
 
     // Navigate to the WelcomePage
     app.navigateTo(L"welcome");

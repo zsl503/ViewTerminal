@@ -41,13 +41,13 @@ namespace View
         
     //     // 允许从任何 ComponentBase 派生类的指针隐式转换
     //     ComponentCombinator(ComponentBase* com = nullptr) {
-    //         if(com) components.push_back(com);
+    //         if(com) components.emplace_back(com);
     //     }
         
     //     // 组合器的组合操作
     //     ComponentCombinator operator|(ComponentBase* right) const {
     //         ComponentCombinator result = *this;
-    //         if(right) result.components.push_back(right);
+    //         if(right) result.components.emplace_back(right);
     //         return result;
     //     }
     // };

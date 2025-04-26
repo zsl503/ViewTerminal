@@ -249,45 +249,6 @@ void View::ComponentBase::drawBorder()
         SetConsoleCursorPosition(outputHandle, point.getCOORD(width - 1, i));
         WriteConsoleW(outputHandle, L"│", 1, &charsWritten, NULL);
     }
-
-    // COORD c = point.getCOORD();
-    
-    // const wchar_t *s = std::wstring(width - 2, L'─').c_str();
-    
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(L"╭");
-    // c.X += 1;
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(s);
-    // c.X += width - 2;
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(L"╮");
-
-    // c.X = point.getAbsX(0), c.Y = point.getAbsY(height - 1);
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(L"╰");
-    // c.X += 1;
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(s);
-    // c.X += width - 2;
-    // SetConsoleCursorPosition(outputHandle, c);
-    // wprintf(L"╯");
-
-    // c.X = point.getAbsX(0);
-    // for (int i = 1; i < height - 1; i++)
-    // {
-    //     c.Y = point.getAbsY(i);
-    //     SetConsoleCursorPosition(outputHandle, c);
-    //     wprintf(L"│");
-    // }
-
-    // c.X = point.getAbsX(width - 1);
-    // for (int i = 1; i < height - 1; i++)
-    // {
-    //     c.Y = point.getAbsY(i);
-    //     SetConsoleCursorPosition(outputHandle, c);
-    //     wprintf(L"│");
-    // }
 }
 
 void View::ComponentBase::setColorStyle(View::Color foreColor, View::Color backColor)
@@ -318,11 +279,24 @@ void View::ComponentBase::drawBackground()
     for (int i = 0; i < height; i++)
     {
         SetConsoleCursorPosition(outputHandle, point.getCOORD(0, i));
-        // wprintf(s);
         WriteConsoleW(outputHandle, s, width, &charsWritten, NULL);
-        // FillConsoleOutputCharacterW(outputHandle, L' ', width, point.getCOORD(0, i), &charsWritten);
-        // FillConsoleOutputAttribute(outputHandle, wd, width, point.getCOORD(0, i), &charsWritten);
     }
+}
+
+// 添加事件系统方法的实现
+void View::ComponentBase::addEventListener(EventType type, const EventHandler& handler)
+{
+    eventManager.addEventListener(type, handler);
+}
+
+void View::ComponentBase::removeEventListeners(EventType type)
+{
+    eventManager.removeEventListeners(type);
+}
+
+void View::ComponentBase::dispatchEvent(EventType type, EventArgs* args)
+{
+    eventManager.dispatchEvent(type, args);
 }
 
 /*-----------------Text-----------------*/
@@ -385,7 +359,6 @@ View::Point View::Text::drawLine(std::wstring text, Point point, bool& isFinish)
 void View::Text::beginDraw()
 {
     SetConsoleTextAttribute(outputHandle, int(nowForeColor) + int(nowBackColor) * 0x10);
-    // drawBackground();
     Point tmp(point);
     SetConsoleCursorPosition(outputHandle, point.getCOORD());
     std::vector<std::wstring> splits = split(text, L"\n");
@@ -427,6 +400,9 @@ View::ComponentBase* View::Button::onMouseEvent(MouseEvent& e)
         return NULL;
     if (isPointIn(e.point))
     {
+        // 创建鼠标事件数据
+        MouseEventArgs mouseArgs(this, e);
+        
         switch (e.type)
         {
         case MouseEventType::LCLICK:
@@ -439,12 +415,22 @@ View::ComponentBase* View::Button::onMouseEvent(MouseEvent& e)
                 nowBackColor = clickBackColor;
                 nowForeColor = clickForeColor;
                 setChange();
+                
+                // 触发点击事件
+                dispatchEvent(EventType::CLICK, &mouseArgs);
+                
+                // 支持向后兼容的旧回调机制
+                if (onClickFun) {
+                    mouseEventFun = onClickFun;
+                }
             }
-            mouseEventFun = NULL;
             break;
         default:
             if (!isHover)
             {
+                // 触发悬停事件
+                dispatchEvent(EventType::HOVER, &mouseArgs);
+                
                 text.setColorStyle(hoverForeColor, hoverBackColor);
                 nowBackColor = hoverBackColor;
                 nowForeColor = hoverForeColor;
@@ -462,6 +448,12 @@ View::ComponentBase* View::Button::onMouseEvent(MouseEvent& e)
     }
     else
     {
+        if (isHover) {
+            // 创建鼠标离开事件数据
+            MouseEventArgs mouseArgs(this, e);
+            dispatchEvent(EventType::MOUSE_LEAVE, &mouseArgs);
+        }
+        
         switch (e.type)
         {
         case MouseEventType::LCLICK:
@@ -904,9 +896,15 @@ View::ComponentBase* View::InputText::onMouseEvent(MouseEvent& e)
                 isPlaceholderVisible = true;
             }
             
-            // 如果文本已更改，调用回调
-            if (textChanged != NULL && newText != currentText)
+            // 在处理文本变更后触发值改变事件
+            if (textChanged != NULL && newText != currentText) {
+                // 创建值改变事件数据
+                ValueChangedEventArgs valueArgs(this, currentText, newText);
+                dispatchEvent(EventType::VALUE_CHANGE, &valueArgs);
+                
+                // 调用旧风格回调以保持向后兼容
                 textChanged(this);
+            }
             
             // 隐藏光标
             CONSOLE_CURSOR_INFO CursorInfo;
@@ -939,19 +937,6 @@ void View::LayoutBase::setShow(bool show)
     }
     //ComponentBase::setShow(show);
 }
-
-// void View::LayoutBase::registerComponents(
-//     std::vector<ComponentBase*>& allComponents,
-//     std::vector<ComponentBase*>& mouseComponents,
-//     std::vector<ComponentBase*>& keyComponents
-// )
-// {
-//     for (auto com : allComponents)
-//         com->setPoint(point.getAbsPoint(com->getPoint()));
-//     this->allComponents = allComponents;
-//     this->mouseComponents = mouseComponents;
-//     this->keyComponents = keyComponents;
-// }
 
 bool View::LayoutBase::addComponent(std::shared_ptr<ComponentBase> com)
 {
@@ -1106,24 +1091,6 @@ void View::Span::setSpace(size_t space)
         currentWidth += (com->getWidth() + space);
     }
 }
-
-// void View::Span::registerComponents(
-//     std::vector<ComponentBase*>& allComponents,
-//     std::vector<ComponentBase*>& mouseComponents,
-//     std::vector<ComponentBase*>& keyComponents
-// )
-// {
-//     this->mouseComponents = mouseComponents;
-//     this->keyComponents = keyComponents;
-//     for (auto i : allComponents)
-//     {
-//         i->setShow(false);
-//         if (!addComponent(i))
-//             LayoutBase::removeComponent(i);
-//         else
-//             i->setShow(true);
-//     }
-// }
 
 /*-----------------Div-----------------*/
 

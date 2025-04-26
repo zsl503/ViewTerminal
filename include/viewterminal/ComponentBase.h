@@ -3,6 +3,9 @@
 #include <Windows.h>
 #include <functional>
 #include <vector>
+#include <map>
+#include <memory>
+#include <any>
 
 #ifndef __COOD_INT
 #define __COOD_INT
@@ -13,21 +16,6 @@ namespace View
 {
 	class ComponentBase;
 
-	enum class Color
-	{
-		BLACK, BLUE, GREEN, LIGHTGREEN, RED, PURPLE, YELLOW, WHITE,
-		GREY, LIGHTBLUE, PALEGREEN, PALELIGHTGREEN, LIGHTRED,
-		LIGHTPURPLE, LIGHTYELLOW, BRIGHTWHITE,
-	};
-
-	enum class MouseEventType
-	{
-		RCLICK,
-		RDOUBLECLICK,
-		LCLICK,
-		LDOUBLECLICK,
-		HOVER
-	};
 
 	class Point
 	{
@@ -49,6 +37,39 @@ namespace View
 		COOD_INT x, y;
 	};
 
+    // 事件类型枚举
+    enum class EventType
+    {
+        // 鼠标事件
+        CLICK,            // 点击事件
+		CLICK_CLICK,     // 双击事件
+        HOVER,            // 悬停事件
+        MOUSE_ENTER,      // 鼠标进入
+        MOUSE_LEAVE,      // 鼠标离开
+        
+        // 键盘事件
+        KEY_PRESS,        // 按键按下
+        KEY_RELEASE,      // 按键释放
+        
+        // 组件事件
+        FOCUS,            // 获得焦点
+        BLUR,             // 失去焦点
+        VALUE_CHANGE,     // 值改变
+        
+        // 自定义事件类型
+        CUSTOM            // 自定义事件
+    };
+
+
+	enum class MouseEventType
+	{
+		RCLICK,
+		RDOUBLECLICK,
+		LCLICK,
+		LDOUBLECLICK,
+		HOVER
+	};
+
 	typedef struct MouseEvent
 	{
 		Point point;
@@ -60,6 +81,96 @@ namespace View
 		Point point;
 		MouseEventType type;
 	}KeyEvent;
+
+
+    // 事件数据基类
+    class EventArgs
+    {
+    public:
+        EventArgs(ComponentBase* sender) : sender(sender) {}
+        virtual ~EventArgs() = default;
+        ComponentBase* getSender() { return sender; }
+    
+    private:
+        ComponentBase* sender;
+    };
+
+    // 鼠标事件数据
+    class MouseEventArgs : public EventArgs
+    {
+    public:
+        MouseEventArgs(ComponentBase* sender, const MouseEvent& event) 
+            : EventArgs(sender), event(event) {}
+        const MouseEvent& getEvent() const { return event; }
+    
+    private:
+        MouseEvent event;
+    };
+
+    // 键盘事件数据
+    class KeyEventArgs : public EventArgs
+    {
+    public:
+        KeyEventArgs(ComponentBase* sender, const KeyEvent& event) 
+            : EventArgs(sender), event(event) {}
+        const KeyEvent& getEvent() const { return event; }
+    
+    private:
+        KeyEvent event;
+    };
+
+    // 值改变事件数据
+    class ValueChangedEventArgs : public EventArgs
+    {
+    public:
+        ValueChangedEventArgs(ComponentBase* sender, const std::any& oldValue, const std::any& newValue) 
+            : EventArgs(sender), oldValue(oldValue), newValue(newValue) {}
+        const std::any& getOldValue() const { return oldValue; }
+        const std::any& getNewValue() const { return newValue; }
+    
+    private:
+        std::any oldValue;
+        std::any newValue;
+    };
+
+    // 事件委托类型定义
+    using EventHandler = std::function<void(EventArgs*)>;
+
+    // 事件管理器类
+    class EventManager
+    {
+    public:
+        // 添加事件监听器
+        void addEventListener(EventType type, const EventHandler& handler)
+        {
+            listeners[type].emplace_back(handler);
+        }
+        
+        // 移除事件监听器（根据类型清除所有）
+        void removeEventListeners(EventType type)
+        {
+            listeners[type].clear();
+        }
+        
+        // 触发事件
+        void dispatchEvent(EventType type, EventArgs* args)
+        {
+            for (const auto& handler : listeners[type])
+            {
+                handler(args);
+            }
+        }
+        
+    private:
+        std::map<EventType, std::vector<EventHandler>> listeners;
+    };
+
+	enum class Color
+	{
+		BLACK, BLUE, GREEN, LIGHTGREEN, RED, PURPLE, YELLOW, WHITE,
+		GREY, LIGHTBLUE, PALEGREEN, PALELIGHTGREEN, LIGHTRED,
+		LIGHTPURPLE, LIGHTYELLOW, BRIGHTWHITE,
+	};
 
 	class ComponentBase
 	{
@@ -82,6 +193,13 @@ namespace View
 		virtual void setSize(size_t, size_t);	// 重置大小
 		virtual void setShow(bool);	// 设置是否在页面中显示
 		bool getShow();	// 获取页面显示设置
+        
+        // 事件系统方法
+        void addEventListener(EventType type, const EventHandler& handler);
+        void removeEventListeners(EventType type);
+        
+        void dispatchEvent(EventType type, EventArgs* args);
+        
 	protected:
 		void setChange();	// 设置页面更新状态，调用函数后，组件会响应下一次更新
 		virtual void beginDraw() = 0;	// 绘制前执行
@@ -103,10 +221,11 @@ namespace View
 		Color foreColor;	// 当前设置的文本色
 		Color defaultForeColor;	// 默认文本色
 		Color defaultBackColor;	// 默认背景色
-		std::function<int(MouseEvent&, ComponentBase*)> mouseEventFun;	// 鼠标事件回调
-		std::function<int(KeyEvent&, ComponentBase*)> keyEventFun;	// 键盘事件回调
+		std::function<int(MouseEvent&, ComponentBase*)> mouseEventFun;	// 鼠标事件回调 (将被废弃)
+		std::function<int(KeyEvent&, ComponentBase*)> keyEventFun;	// 键盘事件回调 (将被废弃)
 		bool isChange = false;	// 是否响应更新
 		bool focus;	// 是否为焦点
+        EventManager eventManager;  // 事件管理器
 	private:
 		bool isDrawed = false;	// 当前组件是否已在屏幕上绘制
 		bool isShow = true;	// 是否显示组件
@@ -158,6 +277,8 @@ namespace View
 		std::wstring setText(std::wstring);
 		std::wstring setText(int);
 		std::wstring getText();
+		
+		// 老的事件回调将被保留一段时间以保持向后兼容性，但标记为过时
 		std::function<int(MouseEvent&, ComponentBase*)> onClickFun;
 	protected:
 		void beginDraw();
