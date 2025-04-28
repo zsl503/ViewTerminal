@@ -2,6 +2,7 @@
 #include "ComponentBase.h"
 #include <memory> // 添加 <memory> 头文件
 #include <algorithm> // 添加 <algorithm> 头文件
+#include <Logger.h>
 #pragma warning( disable : 4996)
 // std::wstring版本
 std::vector<std::wstring> View::split(const std::wstring& in, const std::wstring& delim) {
@@ -11,25 +12,28 @@ std::vector<std::wstring> View::split(const std::wstring& in, const std::wstring
             std::wsregex_token_iterator()
     };
 }
-std::string View::UnicodeToANSI(const std::wstring& wstr)
-{
-    std::string ret;
-    mbstate_t state = {};
-    const wchar_t* src = wstr.data();
-    size_t len = wcsrtombs(nullptr, &src, 0, &state);
-    if (static_cast<size_t>(-1) != len) {
-        std::unique_ptr< char[] > buff(new char[len + 1]);
-        len = wcsrtombs(buff.get(), &src, len, &state);
-        if (static_cast<size_t>(-1) != len) {
-            ret.assign(buff.get(), len);
-        }
-    }
-    return ret;
-}
 
+// 添加一个简单的函数来判断字符在控制台中的宽度（以单元格为单位）
+// 注意：这是一个简化的实现，不适用于所有Unicode字符和复杂的字体情况
+int GetCharacterConsoleWidth(wchar_t ch) {
+    // 常见的单宽字符范围
+    if (ch >= 0x0020 && ch <= 0x007E) return 1; // Basic Latin (ASCII 可打印字符)
+    if (ch >= 0x00A1 && ch <= 0x00FF) return 1; // Latin-1 Supplement 部分字符
+
+    // 常见的双宽字符范围（例如 CJK Unified Ideographs）
+    if (ch >= 0x4E00 && ch <= 0x9FFF) return 2; // CJK Unified Ideographs
+    if (ch >= 0x3000 && ch <= 0x303F) return 2; // CJK Symbols and Punctuation
+    if (ch >= 0xFF01 && ch <= 0xFF60) return 2; // Fullwidth Forms (全角字符)
+    if (ch >= 0xFFE0 && ch <= 0xFFEF) return 2; // Halfwidth and Fullwidth Forms
+
+    // 对于其他未判断的字符，可以根据需要返回默认值。
+    // 这里我们默认返回1，但这可能导致某些宽字符显示不正确。
+    // 如果主要处理中英文，这个范围基本够用。
+    return 1;
+}
 /*-----------------Point-----------------*/
 
-View::Point::Relation View::Point::getNewPointRelation(Point newPoint)
+View::Point::Relation View::Point::getNewPointRelation(const Point& newPoint) const 
 {
     if (newPoint.x == x && newPoint.y == y)
         return Relation::SAME;
@@ -53,12 +57,12 @@ View::Point::Relation View::Point::getNewPointRelation(Point newPoint)
         throw;
 }
 
-View::Point View::Point::getAbsPoint(COOD_INT reX, COOD_INT reY)
+View::Point View::Point::getAbsPoint(COOD_INT reX, COOD_INT reY) const
 {
     return Point(reX + x, reY + y);
 }
 
-View::Point View::Point::getAbsPoint(Point rePoint)
+View::Point View::Point::getAbsPoint(const Point& rePoint) const
 {
     return Point(rePoint.x + x, rePoint.y + y);
 }
@@ -81,16 +85,6 @@ COOD_INT View::Point::getAbsY(COOD_INT reY)
 
 /*-----------------ComponentBase-----------------*/
 
-
-void View::ComponentBase::draw()
-{
-    if (isShow)
-    {
-        beginDraw();
-        isDrawed = true;
-    }
-}
-
 void View::ComponentBase::setShow(bool isShow)
 {
     if (isShow == this->isShow)
@@ -105,8 +99,7 @@ bool View::ComponentBase::getShow()
     return isShow;
 }
 
-
-bool View::ComponentBase::isPointIn(Point point)
+bool View::ComponentBase::isPointIn(const Point& point)
 {
     Point rightDown = this->point.getAbsPoint(width, height);
     switch (this->point.getNewPointRelation(point))
@@ -132,28 +125,34 @@ bool View::ComponentBase::isPointIn(Point point)
     return true;
 }
 
-bool View::ComponentBase::isPointIn(COORD point)
+bool View::ComponentBase::isPointIn(const COORD& point)
 {
     return isPointIn(Point(point));
 }
 
-void View::ComponentBase::setPoint(Point point)
+void View::ComponentBase::setPoint(const Point& point)
 {
-    this->point = point;
-    this->setChange();
+    LOG_DEBUG(L"ComponentBase::setPoint: " + std::to_wstring(point.x) + L" " + std::to_wstring(point.y));
+    if (this->point != point) {
+        this->point = point;
+        if (isDrawed) {
+            setChange();
+        }
+    }
 }
 
 void View::ComponentBase::setSize(size_t width, size_t height)
 {
-    this->width = width;
-    this->height = height;
-    setChange();
+    if (this->width != width || this->height != height) {
+        this->width = width;
+        this->height = height;
+        setChange();
+    }
 }
 
 void View::ComponentBase::setChange()
 {
-    if (isShow)
-        isChange = true;
+    isChange = true;
 }
 
 View::Point View::ComponentBase::getPoint()
@@ -161,24 +160,58 @@ View::Point View::ComponentBase::getPoint()
     return point;
 }
 
-View::ComponentBase* View::ComponentBase::onMouseEvent(MouseEvent& e)
+void View::ComponentBase::onMouseEvent(MouseEvent& e)
 {
-    if (mouseEventFun && mouseEventFun(e, this))
+    if (!getShow())
+        return;
+
+    MouseEventArgs mouseArgs(this, e);
+    if (isPointIn(e.point))
     {
-        setChange();
-        return this;
+        dispatchEvent(EventType::MOUSE_ENTER, &mouseArgs);
+        
+        switch (e.type)
+        {
+        case MouseEventType::RCLICK:
+        case MouseEventType::RDOUBLECLICK:
+        case MouseEventType::LCLICK:
+        case MouseEventType::LDOUBLECLICK:
+            LOG_DEBUG(L"ComponentBase::onMouseEvent: [Click]:" + std::to_wstring(e.point.x) + L" " + std::to_wstring(e.point.y));
+            isHover = false;
+            if (!isOnclick)
+                dispatchEvent(EventType::CLICK, &mouseArgs);
+            break;
+        default:
+            if (!isHover)
+            {
+                LOG_DEBUG(L"ComponentBase::onMouseEvent: [MOUSE_OVER]:" + std::to_wstring(e.point.x) + L" " + std::to_wstring(e.point.y));
+                dispatchEvent(EventType::MOUSE_OVER, &mouseArgs);
+                isHover = true;
+            }
+            if (isOnclick)
+            {
+                isOnclick = false;
+            }
+        }
     }
-    return NULL;
+    else
+    {
+        if (isHover || isOnclick) {
+            dispatchEvent(EventType::MOUSE_LEAVE, &mouseArgs);
+        }
+        isHover = false;
+        isOnclick = false;
+    }
 }
 
-View::ComponentBase* View::ComponentBase::onKeyEvent(KeyEvent& e)
+void View::ComponentBase::onKeyEvent(KeyEvent& e)
 {
-    if (keyEventFun && keyEventFun(e, this))
-    {
-        setChange();
-        return this;
-    }
-    return NULL;
+    // if (keyEventFun && keyEventFun(e, this))
+    // {
+    //     setChange();
+    //     return this;
+    // }
+    return;
 }
 
 View::ComponentBase::~ComponentBase()
@@ -186,26 +219,28 @@ View::ComponentBase::~ComponentBase()
     clearDraw();
 }
 
-void View::ComponentBase::update()
+void View::ComponentBase::update(bool force)
 {
-    if (!isChange) return;
-    clearDraw();
-    draw();
-    isChange = false;
+    if (isChange || force) {
+        clearDraw(isShow);
+        if (isShow) {
+            LOG_DEBUG(L"ComponentBase::update: Drawed Component at (" + std::to_wstring(point.x) + L"," + std::to_wstring(point.y) + L")" +
+                L" (" + std::to_wstring(width) + L"," + std::to_wstring(height) + L")");
+            beginDraw();
+            isDrawed = true;
+        }
+        isChange = false;
+    }
 }
 
-void View::ComponentBase::clearDraw()
+void View::ComponentBase::clearDraw(bool useBackColor)
 {
     if (!isDrawed) return;
-    // SetConsoleTextAttribute(outputHandle, int(defaultForeColor) + int(defaultBackColor) * 10);
-    WORD wd = int(defaultForeColor) + int(defaultBackColor) * 0x10; 
-    DWORD charsWritten;
-
-    for (int i = 0; i < height; i++)
-    {
-        FillConsoleOutputCharacterW(outputHandle, L' ', width, point.getCOORD(0, i), &charsWritten);
-        FillConsoleOutputAttribute(outputHandle, wd, width, point.getCOORD(0, i), &charsWritten);
-    }
+    // 清除当前组件的绘制
+    if(useBackColor)
+        render.clearRect(point, width, height, nowBackColor);
+    else
+        render.clearRect(point, width, height);
     isDrawed = false;
 }
 
@@ -224,66 +259,16 @@ View::Point View::ComponentBase::getRDPoint()
     return this->point.getAbsPoint(width - 1, height - 1);
 }
 
-void View::ComponentBase::drawBorder()
-{
-    //????
-
-    // 预先准备好边框字符串
-    std::wstring topBorder = L"╭" + std::wstring(width - 2, L'─') + L"╮";
-    std::wstring bottomBorder = L"╰" + std::wstring(width - 2, L'─') + L"╯";
-    
-    // 绘制顶部边框(一次性写入)
-    DWORD charsWritten;
-    SetConsoleCursorPosition(outputHandle, point.getCOORD());
-    WriteConsoleW(outputHandle, topBorder.c_str(), (DWORD)topBorder.length(), &charsWritten, NULL);
-    
-    // 绘制底部边框(一次性写入)
-    SetConsoleCursorPosition(outputHandle, point.getCOORD(0, height - 1));
-    WriteConsoleW(outputHandle, bottomBorder.c_str(), (DWORD)bottomBorder.length(), &charsWritten, NULL);
-    
-    // 绘制左右边框
-    for (int i = 1; i < height - 1; i++) {
-        SetConsoleCursorPosition(outputHandle, point.getCOORD(0, i));
-        WriteConsoleW(outputHandle, L"│", 1, &charsWritten, NULL);
-        
-        SetConsoleCursorPosition(outputHandle, point.getCOORD(width - 1, i));
-        WriteConsoleW(outputHandle, L"│", 1, &charsWritten, NULL);
-    }
-}
-
-void View::ComponentBase::setColorStyle(View::Color foreColor, View::Color backColor)
-{
-    this->nowForeColor = foreColor;
-    this->nowBackColor = backColor;
-    this->foreColor = foreColor;
-    this->backColor = backColor;
-    setChange();
-}
-
-void View::ComponentBase::unsetFocus()
-{
-    focus = false;
-}
-
-void View::ComponentBase::setFocus()
-{
-    focus = true;
-}
-
 void View::ComponentBase::drawBackground()
 {
-    WORD wd = int(defaultForeColor) + int(defaultBackColor) * 0x10; 
-    DWORD charsWritten;
-    const wchar_t *s = std::wstring(width, L' ').c_str();
-
-    for (int i = 0; i < height; i++)
-    {
-        SetConsoleCursorPosition(outputHandle, point.getCOORD(0, i));
-        WriteConsoleW(outputHandle, s, width, &charsWritten, NULL);
-    }
+    render.fillRect(point, width, height, L' ', nowForeColor, nowBackColor);
 }
 
-// 添加事件系统方法的实现
+void View::ComponentBase::drawBorder()
+{
+    render.drawBorder(point, width, height, nowForeColor, nowBackColor);
+}
+
 void View::ComponentBase::addEventListener(EventType type, const EventHandler& handler)
 {
     eventManager.addEventListener(type, handler);
@@ -299,33 +284,66 @@ void View::ComponentBase::dispatchEvent(EventType type, EventArgs* args)
     eventManager.dispatchEvent(type, args);
 }
 
+void View::ComponentBase::setColorStyle(View::Color foreColor, View::Color backColor)
+{
+    // 如果颜色没有变化，就不需要更新
+    if (this->foreColor == foreColor && this->backColor == backColor)
+        return;
+        
+    this->nowForeColor = foreColor;
+    this->nowBackColor = backColor;
+    this->foreColor = foreColor;
+    this->backColor = backColor;
+    
+    // 标记组件需要更新
+    setChange();
+}
+
+void View::ComponentBase::setFocus()
+{
+    if (!focus) {
+        focus = true;
+        
+        // 发布获取焦点事件
+        EventArgs args(this);
+        dispatchEvent(EventType::FOCUS, &args);
+        
+        // 如果组件具有可视化焦点效果，可以在这里标记它需要更新
+        setChange();
+    }
+}
+
+void View::ComponentBase::unsetFocus()
+{
+    if (focus) {
+        focus = false;
+        
+        // 发布失去焦点事件
+        EventArgs args(this);
+        dispatchEvent(EventType::BLUR, &args);
+        
+        // 如果组件具有可视化焦点效果，可以在这里标记它需要更新
+        setChange();
+    }
+}
+
 /*-----------------Text-----------------*/
 
-
-View::Point View::Text::drawLine(std::wstring text, Point point, bool& isFinish)
+View::Point View::Text::drawLineToBuffer(std::wstring text, Point point, bool& isFinish)
 {
-    SetConsoleCursorPosition(outputHandle, point.getCOORD());
-    
-    // 计算可显示的最大宽度
     size_t maxWidth = width;
     size_t outLineLen = 0;
     size_t line = 0;
-    
-    // 创建缓冲区存储待输出内容
     std::wstring buffer;
     buffer.reserve(maxWidth);
-    
     for (size_t i = 0; i < text.size(); i++)
     {
-        int charWidth = UnicodeToANSI(text.substr(i, 1)).length();
+        COOD_INT charWidth = GetCharacterConsoleWidth(text[i]); // 获取当前字符占用的单元格宽度
         
         if (outLineLen + charWidth > maxWidth)
         {
             // 输出当前缓冲区内容
-            DWORD charsWritten;
-            SetConsoleCursorPosition(outputHandle, point.getCOORD(0, line));
-            WriteConsoleW(outputHandle, buffer.c_str(), (DWORD)buffer.length(), &charsWritten, NULL);
-            
+            render.writeString(point.getCOORD(0, line), buffer, nowForeColor, nowBackColor);
             buffer.clear();
             outLineLen = 0;
             line++;
@@ -333,46 +351,39 @@ View::Point View::Text::drawLine(std::wstring text, Point point, bool& isFinish)
             // 检查是否超出垂直边界
             if (point.getAbsY(line) > this->point.getAbsY(height - 1))
             {
-                SetConsoleCursorPosition(outputHandle, this->point.getCOORD(width - 3, height - 1));
-                WriteConsoleW(outputHandle, L"...", 3, &charsWritten, NULL);
+                render.writeString(this->point.getCOORD(width - 3, height - 1), L"...", nowForeColor, nowBackColor);
                 isFinish = false;
                 return point.getAbsPoint(outLineLen, line);
             }
         }
-        
         buffer += text[i];
         outLineLen += charWidth;
     }
-    
-    // 输出最后一行
+
     if (!buffer.empty()) {
-        DWORD charsWritten;
-        SetConsoleCursorPosition(outputHandle, point.getCOORD(0, line));
-        WriteConsoleW(outputHandle, buffer.c_str(), (DWORD)buffer.length(), &charsWritten, NULL);
+        render.writeString(point.getCOORD(0, line), buffer, nowForeColor, nowBackColor);
     }
-    
+
     isFinish = true;
     return point.getAbsPoint(outLineLen, line);
 }
 
-
 void View::Text::beginDraw()
 {
-    SetConsoleTextAttribute(outputHandle, int(nowForeColor) + int(nowBackColor) * 0x10);
+    WORD attr = (WORD)(int(nowForeColor) + int(nowBackColor) * 0x10);
     Point tmp(point);
-    SetConsoleCursorPosition(outputHandle, point.getCOORD());
+    
     std::vector<std::wstring> splits = split(text, L"\n");
     bool isFinish = false;
+    
     for (auto& line : splits)
     {
         isFinish = false;
-        endPoint = drawLine(line, tmp, isFinish);
+        endPoint = drawLineToBuffer(line, tmp, isFinish);
         tmp.y = endPoint.y + 1;
         if (!isFinish) break;
     }
-    SetConsoleTextAttribute(outputHandle, int(defaultForeColor) + int(defaultBackColor) * 0x10);
 }
-
 
 std::wstring View::Text::setText(std::wstring newText)
 {
@@ -394,85 +405,48 @@ std::wstring View::Text::getText()
 
 /*-----------------Button-----------------*/
 
-View::ComponentBase* View::Button::onMouseEvent(MouseEvent& e)
+void View::Button::addDefaultEventListener() 
 {
-    if (!getShow())
-        return NULL;
-    if (isPointIn(e.point))
-    {
-        // 创建鼠标事件数据
-        MouseEventArgs mouseArgs(this, e);
-        
-        switch (e.type)
+    addEventListener(EventType::MOUSE_OVER, [this](EventArgs* e) {
+        LOG_DEBUG(L"Button::addDefaultEventListener [MOUSE_OVER]");
+        if (nowBackColor == hoverBackColor && nowForeColor == hoverForeColor)
+            return;
+        text.setColorStyle(hoverForeColor, hoverBackColor);
+        nowBackColor = hoverBackColor;
+        nowForeColor = hoverForeColor;
+        setChange();
+    });
+
+    addEventListener(EventType::CLICK, [this](EventArgs* e) {
+        MouseEventArgs* mouseArgs = static_cast<MouseEventArgs*>(e);
+        LOG_DEBUG(L"Button::addDefaultEventListener [CLICK]: " + std::to_wstring(mouseArgs->event.point.x) + L" " + std::to_wstring(mouseArgs->event.point.y));
+        switch (mouseArgs->event.type)
         {
-        case MouseEventType::LCLICK:
-        case MouseEventType::LDOUBLECLICK:
-            isHover = false;
-            if (!isOnclick)
-            {
-                isOnclick = true;
-                text.setColorStyle(clickForeColor, clickBackColor);
-                nowBackColor = clickBackColor;
-                nowForeColor = clickForeColor;
-                setChange();
-                
-                // 触发点击事件
-                dispatchEvent(EventType::CLICK, &mouseArgs);
-                
-                // 支持向后兼容的旧回调机制
-                if (onClickFun) {
-                    mouseEventFun = onClickFun;
-                }
-            }
+            case MouseEventType::LDOUBLECLICK:
+            case MouseEventType::LCLICK:
+            if (nowBackColor == clickBackColor && nowForeColor == clickForeColor)
+                return;
+            text.setColorStyle(foreColor, backColor);
+            nowBackColor = backColor;
+            nowForeColor = foreColor;
+            // if (nowBackColor == clickBackColor && nowForeColor == clickForeColor)
+            //     return;
+            // text.setColorStyle(clickForeColor, clickBackColor);
+            // nowBackColor = clickBackColor;
+            // nowForeColor = clickForeColor;
             break;
-        default:
-            if (!isHover)
-            {
-                // 触发悬停事件
-                dispatchEvent(EventType::HOVER, &mouseArgs);
-                
-                text.setColorStyle(hoverForeColor, hoverBackColor);
-                nowBackColor = hoverBackColor;
-                nowForeColor = hoverForeColor;
-                isHover = true;
-                setChange();
-            }
-            if (isOnclick)
-            {
-                mouseEventFun = onClickFun;
-                isOnclick = false;
-            }
-            else
-                mouseEventFun = NULL;
-        }
-    }
-    else
-    {
-        if (isHover) {
-            // 创建鼠标离开事件数据
-            MouseEventArgs mouseArgs(this, e);
-            dispatchEvent(EventType::MOUSE_LEAVE, &mouseArgs);
-        }
-        
-        switch (e.type)
-        {
-        case MouseEventType::LCLICK:
-        case MouseEventType::LDOUBLECLICK:
-            break;
-        default:
-            if (isHover || isOnclick)
-            {
-                text.setColorStyle(foreColor, backColor);
-                nowBackColor = backColor;
-                nowForeColor = foreColor;
-                isHover = false;
-                isOnclick = false;
-                setChange();
-            }
-        }
-        mouseEventFun = NULL;
-    }
-    return ComponentBase::onMouseEvent(e);
+        } 
+    });
+
+    addEventListener(EventType::MOUSE_LEAVE, [this](EventArgs* e) {
+        LOG_DEBUG(L"Button::addDefaultEventListener [MOUSE_LEAVE]");
+        if (nowBackColor == clickBackColor && nowForeColor == clickForeColor)
+            return;
+        text.setColorStyle(foreColor, backColor);
+        nowBackColor = backColor;
+        nowForeColor = foreColor;
+        setChange();
+    });
 }
 
 std::wstring View::Button::setText(std::wstring newText)
@@ -496,15 +470,13 @@ std::wstring View::Button::getText()
 }
 
 void View::Button::beginDraw()
-{
-    SetConsoleTextAttribute(outputHandle, int(nowForeColor) + int(nowBackColor) * 0x10);
+{    
     drawBackground();
     drawBorder();
     text.setPoint(point.getAbsPoint(textAbX, textAbY));
     text.setSize(width - textSubWidth, height - textSubHeight);
     text.setColorStyle(nowForeColor, nowBackColor);
-    text.draw();
-    SetConsoleTextAttribute(outputHandle, int(defaultForeColor) + int(defaultBackColor) * 0x10);
+    text.update();
 }
 
 void View::Button::setHoverStyle(View::Color foreColor, View::Color backColor)
@@ -528,22 +500,22 @@ void View::Button::setColorStyle(View::Color foreColor, View::Color backColor)
 
 /*-----------------List-----------------*/
 
-View::List::List(HANDLE outputHandle, std::vector<std::wstring> items, size_t abX, size_t abY, size_t width, size_t itemHeight, Color defaultForeColor, Color defaultBackColor)
-    : List(outputHandle, items, Point(abX, abY), width, itemHeight) {}
+View::List::List(Renderer& render, const std::vector<std::wstring>& items, size_t abX, size_t abY, size_t width, size_t itemHeight, Color defaultForeColor, Color defaultBackColor)
+    : List(render, items, Point(abX, abY), width, itemHeight) {}
 
-View::List::List(HANDLE outputHandle, std::vector<std::wstring> items, Point point, size_t width, size_t itemHeight, Color defaultForeColor, Color defaultBackColor)
-    : ComponentBase(outputHandle, point, width, itemHeight, defaultForeColor, defaultBackColor)
+View::List::List(Renderer& render, const std::vector<std::wstring>& items, const Point& point, size_t width, size_t itemHeight, Color defaultForeColor, Color defaultBackColor)
+    : ComponentBase(render, point, width, itemHeight, defaultForeColor, defaultBackColor)
 {
     height = items.size() * itemHeight;
     COOD_INT y = 0;
     for (const auto& i : items)
     {
-        buttons.emplace_back(std::make_unique<View::Button>(outputHandle, i, point.getAbsPoint(0, y), width, itemHeight));
+        buttons.emplace_back(std::make_unique<View::Button>(render, i, point.getAbsPoint(0, y), width, itemHeight));
         y += (itemHeight-1);
     }
 }
 
-void View::List::setPoint(Point point)
+void View::List::setPoint(const Point& point)
 {
     int dx = point.x - this->point.x, dy = point.y - this->point.y;
     for (auto& i : buttons)
@@ -555,49 +527,34 @@ void View::List::setPoint(Point point)
 
 void View::List::beginDraw()
 {
+    // clearDraw(true);
+    drawBackground();
     COORD c = point.getCOORD();
     DWORD charsWritten;
     Point p;
     for (auto& button : buttons){
-        button->draw();
+        button->update(true);
     }
-    for (size_t i = 0; i < buttons.size() - 1; i++)
-    {
-        p = buttons[i]->getRDPoint();
-        c.X = p.x, c.Y = p.y;
-        SetConsoleCursorPosition(outputHandle, c);
-        WriteConsoleW(outputHandle, L"│", 1, &charsWritten, NULL);
-        c.X = point.x, c.Y = p.y;
-        SetConsoleCursorPosition(outputHandle, c);
-        WriteConsoleW(outputHandle, L"│", 1, &charsWritten, NULL);
-    }
-}
-
-View::List::~List()
-{
-    ComponentBase::~ComponentBase();
+    drawBorder();
+    // 绘制分隔线 | 取代原来的渲染方式
+    // render.fillRect(point, 1, height, L'|', nowForeColor, nowBackColor);
+    // render.fillRect(point.getAbsPoint(width - 1, 0), 1, height, L'|', nowForeColor, nowBackColor);
 }
 
 /*-----------------Line-----------------*/
 
 void View::Line::beginDraw()
 {
-    SetConsoleTextAttribute(outputHandle, int(nowForeColor) + int(nowBackColor) * 0x10);
+    WORD attr = (WORD)(int(nowForeColor) + int(nowBackColor) * 0x10);
+    
     if (isHorizontal)
     {
-        SetConsoleCursorPosition(outputHandle, point.getCOORD());
-        for (size_t i = 0; i < length; i++)
-        {
-            std::wcout << L"─";
-        }
+        render.fillRect(point, length, 1, L'─', nowForeColor, nowBackColor);
     }
     else
-        for (size_t i = 0; i < length; i++)
-        {
-            SetConsoleCursorPosition(outputHandle, point.getCOORD(0, i));
-            std::wcout << L"│";
-        }
-    SetConsoleTextAttribute(outputHandle, int(defaultForeColor) + int(defaultBackColor) * 0x10);
+    {
+        render.fillRect(point, 1, length, L'│', nowForeColor, nowBackColor);
+    }
 }
 
 /*-----------------InputText-----------------*/
@@ -609,7 +566,7 @@ std::vector<std::wstring> View::InputText::calculateTextLines(const std::wstring
     int lineWidth = 0;
     
     for (size_t i = 0; i < text.length(); i++) {
-        int charWidth = UnicodeToANSI(text.substr(i, 1)).length();
+        int charWidth = GetCharacterConsoleWidth(text[i]);
         if (lineWidth + charWidth > width - 1) {  // 留出一些边距
             textLines.emplace_back(currentLine);
             currentLine.clear();
@@ -625,70 +582,15 @@ std::vector<std::wstring> View::InputText::calculateTextLines(const std::wstring
     return textLines;
 }
 
-// 显示文本内容
-void View::InputText::renderText(const std::vector<std::wstring>& textLines) {
-    clearDraw();
-    for (size_t i = 0; i < textLines.size(); i++) {
-        SetConsoleCursorPosition(outputHandle, point.getCOORD(0, i));
-        std::wcout << textLines[i];
-    }
-}
-
-// 根据鼠标点击位置计算光标位置
-int View::InputText::calculateCursorPosition(const std::vector<std::wstring>& textLines, int clickX, int clickY, int& currentLineIdx, int& accumulatedWidth) {
-    int cursorPos = 0;
-    
-    // 先定位到正确的行
-    for (int i = 0; i < clickY && i < textLines.size(); i++) {
-        cursorPos += textLines[i].length();
-    }
-    
-    // 如果点击的行超出了文本行数，光标放在最后一个位置
-    currentLineIdx = clickY < textLines.size() ? clickY : (textLines.size() > 0 ? textLines.size() - 1 : 0);
-    std::wstring clickedLine = currentLineIdx < textLines.size() ? textLines[currentLineIdx] : (textLines.size() > 0 ? textLines.back() : L"");
-    
-    // 在当前行中定位光标
-    accumulatedWidth = 0;
-    int linePos = 0;
-    for (size_t i = 0; i < clickedLine.length(); i++) {
-        int charWidth = UnicodeToANSI(clickedLine.substr(i, 1)).length();
-        if (accumulatedWidth + charWidth/2 >= clickX) {
-            break;
-        }
-        accumulatedWidth += charWidth;
-        linePos++;
-    }
-    
-    // 计算光标在全文中的位置
-    cursorPos = 0;
-    for (int i = 0; i < currentLineIdx && i < textLines.size(); i++) {
-        cursorPos += textLines[i].length();
-    }
-    cursorPos += linePos;
-    
-    return cursorPos;
-}
-
-// 显示光标并定位
-void View::InputText::showAndPositionCursor(int accumulatedWidth, int currentLineIdx) {
-    CONSOLE_CURSOR_INFO CursorInfo;
-    GetConsoleCursorInfo(outputHandle, &CursorInfo);
-    CursorInfo.bVisible = true;
-    SetConsoleCursorInfo(outputHandle, &CursorInfo);
-    SetConsoleCursorPosition(outputHandle, point.getCOORD(accumulatedWidth, currentLineIdx));
-}
 
 // 处理插入字符
 bool View::InputText::handleCharacterInput(KEY_EVENT_RECORD ker, std::wstring& newText, int& cursorPos, 
                                          std::vector<std::wstring>& textLines, int& currentLineIdx, int& linePos) {
-    // 检查插入后是否会超过垂直限制
     std::wstring testText = newText;
     testText.insert(cursorPos, 1, ker.uChar.UnicodeChar);
     
-    // 计算插入后的行数
     std::vector<std::wstring> testLines = calculateTextLines(testText);
     
-    // 如果行数超过高度限制，拒绝输入
     if (testLines.size() > height) {
         return false;
     }
@@ -696,13 +598,10 @@ bool View::InputText::handleCharacterInput(KEY_EVENT_RECORD ker, std::wstring& n
     newText.insert(cursorPos, 1, ker.uChar.UnicodeChar);
     cursorPos++;
     
-    // 重新使用测试过的行数据
     textLines = testLines;
     
-    // 重新绘制文本
     renderText(textLines);
     
-    // 更新当前行和光标位置
     updateLineAndPosition(textLines, cursorPos, currentLineIdx, linePos);
     
     return true;
@@ -713,135 +612,176 @@ void View::InputText::handleDelete(std::wstring& newText, int& cursorPos, std::v
                                  int& currentLineIdx, int& linePos, bool isBackspace) {
     if (isBackspace) {
         cursorPos--;
+        cursorPos = std::max(0, cursorPos);
     }
+    if(cursorPos > 0)
+        newText.erase(cursorPos, 1);
+    else if(cursorPos == 0)
+        newText.clear();
     
-    newText.erase(cursorPos, 1);
-    
-    // 重新计算文本行
     textLines = calculateTextLines(newText);
     
-    // 重新绘制文本
     renderText(textLines);
     
-    // 更新当前行和光标位置
     updateLineAndPosition(textLines, cursorPos, currentLineIdx, linePos);
 }
 
+
+// 显示文本内容（修改：render只调用一次）
+void View::InputText::renderText(const std::vector<std::wstring>& textLines) {
+    drawBackground();
+    for (size_t i = 0; i < textLines.size(); i++) {
+        render.writeString(point.getAbsPoint(0, i), textLines[i], nowForeColor, nowBackColor);
+    }
+    render.render(); // 注意：不要在每行render了，只最后render一次
+}
+
+void View::InputText::showAndPositionCursor(int accumulatedWidth, int currentLineIdx) {
+    CONSOLE_CURSOR_INFO CursorInfo;
+    HANDLE outputHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    GetConsoleCursorInfo(outputHandle, &CursorInfo);
+    CursorInfo.bVisible = true;
+    SetConsoleCursorInfo(outputHandle, &CursorInfo);
+    
+    COORD pos = point.getCOORD(accumulatedWidth, currentLineIdx);
+    SetConsoleCursorPosition(outputHandle, pos);
+}
+
 // 更新当前行和光标在行中的位置
-void View::InputText::updateLineAndPosition(const std::vector<std::wstring>& textLines, int cursorPos, 
-                                          int& currentLineIdx, int& linePos) {
+void View::InputText::updateLineAndPosition(const std::vector<std::wstring>& textLines, int cursorPos,
+                                             int& currentLineIdx, int& linePos) {
+    // --- 添加的检查 ---
+    if (textLines.empty()) {
+        currentLineIdx = 0;
+        linePos = 0;
+        return; // 直接返回，不执行后续逻辑
+    }
+    // -----------------
+
     currentLineIdx = 0;
     int tempPos = 0;
     for (int i = 0; i < textLines.size(); i++) {
         if (tempPos + textLines[i].length() >= cursorPos) {
             currentLineIdx = i;
             linePos = cursorPos - tempPos;
-            break;
+            return;
         }
         tempPos += textLines[i].length();
     }
+    // 如果没找到，放最后 (此处的逻辑在添加空检查后，只会在 textLines 非空的情况下执行，但光标位置超出文本总长度时触发)
+    // 这种情况也需要正确处理，确保索引不越界
+    currentLineIdx = textLines.size() - 1;
+    linePos = textLines.back().length();
+    // 额外检查：确保linePos不超过当前行的长度
+    if (linePos > textLines[currentLineIdx].length()) {
+        linePos = textLines[currentLineIdx].length();
+    }
 }
 
-// 计算光标显示的位置
+// 计算光标显示的列宽
 int View::InputText::calculateCursorDisplayPosition(const std::vector<std::wstring>& textLines, int currentLineIdx, int linePos) {
-    if (currentLineIdx >= textLines.size() || linePos > textLines[currentLineIdx].length()) {
-        return 0;
-    }
-    
+    if (currentLineIdx >= textLines.size()) return 0;
     int accumulatedWidth = 0;
-    for (int i = 0; i < linePos; i++) {
-        accumulatedWidth += UnicodeToANSI(textLines[currentLineIdx].substr(i, 1)).length();
+    const std::wstring& line = textLines[currentLineIdx];
+    for (int i = 0; i < linePos && i < line.length(); i++) {
+        accumulatedWidth += GetCharacterConsoleWidth(line[i]);
     }
-    
     return accumulatedWidth;
 }
 
-// 处理键盘输入事件
+// 鼠标点击光标位置改进版（修得更准）
+int View::InputText::calculateCursorPosition(const std::vector<std::wstring>& textLines, int clickX, int clickY, int& currentLineIdx, int& accumulatedWidth) {
+    currentLineIdx = std::clamp(clickY, 0, static_cast<int>(textLines.size()-1));
+    const std::wstring& clickedLine = (currentLineIdx < textLines.size()) ? textLines[currentLineIdx] : L"";
+
+    accumulatedWidth = 0;
+    int linePos = 0;
+    for (size_t i = 0; i < clickedLine.length(); i++) {
+        int charWidth = GetCharacterConsoleWidth(clickedLine[i]);
+        if (accumulatedWidth + charWidth/2 >= clickX) {
+            break;
+        }
+        accumulatedWidth += charWidth;
+        linePos++;
+    }
+
+    int cursorPos = 0;
+    for (int i = 0; i < currentLineIdx; i++) {
+        cursorPos += textLines[i].length();
+    }
+    cursorPos += linePos;
+
+    return cursorPos;
+}
+
+// 处理键盘输入时，每次移动光标都刷新一次
 bool View::InputText::handleKeyEvent(KEY_EVENT_RECORD ker, std::wstring& newText, std::wstring& currentText, 
                                    int& cursorPos, std::vector<std::wstring>& textLines, 
                                    int& currentLineIdx, int& linePos, bool& editing) {
-    // Enter键 - 结束编辑
-    if (ker.wVirtualKeyCode == VK_RETURN){
+    bool changed = false;
+    if (ker.wVirtualKeyCode == VK_RETURN) {
         editing = false;
         return true;
-    }
-    // Escape键 - 取消编辑
+    } 
     else if (ker.wVirtualKeyCode == VK_ESCAPE) {
         newText = currentText;
         editing = false;
         return true;
-    }
-    // 左箭头 - 光标左移
+    } 
     else if (ker.wVirtualKeyCode == VK_LEFT && cursorPos > 0) {
         cursorPos--;
-        updateLineAndPosition(textLines, cursorPos, currentLineIdx, linePos);
-        int accumulatedWidth = calculateCursorDisplayPosition(textLines, currentLineIdx, linePos);
-        showAndPositionCursor(accumulatedWidth, currentLineIdx);
-        return true;
-    }
-    // 右箭头 - 光标右移
+        changed = true;
+    } 
     else if (ker.wVirtualKeyCode == VK_RIGHT && cursorPos < newText.length()) {
         cursorPos++;
+        changed = true;
+    }
+    else if (ker.wVirtualKeyCode == VK_BACK && cursorPos > 0) {
+        handleDelete(newText, cursorPos, textLines, currentLineIdx, linePos, true);
+        changed = true;
+    }
+    else if (ker.wVirtualKeyCode == VK_DELETE && cursorPos < newText.length()) {
+        handleDelete(newText, cursorPos, textLines, currentLineIdx, linePos, false);
+        changed = true;
+    }
+    else if (ker.uChar.UnicodeChar != 0) {
+        if (handleCharacterInput(ker, newText, cursorPos, textLines, currentLineIdx, linePos)) {
+            changed = true;
+        }
+    }
+
+    if (changed) {
         updateLineAndPosition(textLines, cursorPos, currentLineIdx, linePos);
         int accumulatedWidth = calculateCursorDisplayPosition(textLines, currentLineIdx, linePos);
         showAndPositionCursor(accumulatedWidth, currentLineIdx);
-        return true;
     }
-    // Backspace键 - 删除光标前的字符
-    else if (ker.wVirtualKeyCode == VK_BACK && cursorPos > 0) {
-        handleDelete(newText, cursorPos, textLines, currentLineIdx, linePos, true);
-        int accumulatedWidth = calculateCursorDisplayPosition(textLines, currentLineIdx, linePos);
-        showAndPositionCursor(accumulatedWidth, currentLineIdx);
-        return true;
-    }
-    // Delete键 - 删除光标后的字符
-    else if (ker.wVirtualKeyCode == VK_DELETE && cursorPos < newText.length()) {
-        handleDelete(newText, cursorPos, textLines, currentLineIdx, linePos, false);
-        int accumulatedWidth = calculateCursorDisplayPosition(textLines, currentLineIdx, linePos);
-        showAndPositionCursor(accumulatedWidth, currentLineIdx);
-        return true;
-    }
-    // 普通字符 - 在光标位置插入
-    else if (ker.uChar.UnicodeChar != 0 && ker.uChar.UnicodeChar != VK_RETURN) {
-        if (handleCharacterInput(ker, newText, cursorPos, textLines, currentLineIdx, linePos)) {
-            int accumulatedWidth = calculateCursorDisplayPosition(textLines, currentLineIdx, linePos);
-            showAndPositionCursor(accumulatedWidth, currentLineIdx);
-        }
-        return true;
-    }
-    
-    return false;
+    return changed;
 }
 
 // 主函数
-View::ComponentBase* View::InputText::onMouseEvent(MouseEvent& e)
+void View::InputText::onMouseEvent(MouseEvent& e)
 {
+    HANDLE outputHandle = render.getOutputHandle();
     SetConsoleTextAttribute(outputHandle, int(defaultForeColor) + int(defaultBackColor) * 0x10);
-    mouseEventFun = NULL;
     if (isPointIn(e.point))
     {
         if (e.type != MouseEventType::HOVER)
         {
-            // 获取当前文本（如果显示的是占位符，则使用空字符串）
             std::wstring currentText = isPlaceholderVisible ? L"" : getText();
             
-            // 计算并显示文本行
             std::vector<std::wstring> textLines = calculateTextLines(currentText);
             renderText(textLines);
             
-            // 计算点击位置对应的文本索引
-            int clickX = e.point.x - point.x;  // 相对于控件左上角的X坐标
-            int clickY = e.point.y - point.y;  // 相对于控件左上角的Y坐标
+            int clickX = e.point.x - point.x;
+            int clickY = e.point.y - point.y;
             
             int currentLineIdx = 0;
             int accumulatedWidth = 0;
             int cursorPos = calculateCursorPosition(textLines, clickX, clickY, currentLineIdx, accumulatedWidth);
             int linePos = cursorPos - (currentLineIdx > 0 ? (cursorPos - accumulatedWidth) : 0);
             
-            // 显示并定位光标
             showAndPositionCursor(accumulatedWidth, currentLineIdx);
             
-            // 进入编辑模式
             INPUT_RECORD inputRecord;
             DWORD numEventsRead;
             std::wstring newText = currentText;
@@ -849,37 +789,30 @@ View::ComponentBase* View::InputText::onMouseEvent(MouseEvent& e)
             
             while (editing)
             {
-                // 使用PeekConsoleInput而不是ReadConsoleInput，这样可以非阻塞检查输入
                 DWORD numEvents = 0;
                 PeekConsoleInputW(GetStdHandle(STD_INPUT_HANDLE), &inputRecord, 1, &numEvents);
                 
                 if (numEvents > 0) {
                     ReadConsoleInputW(GetStdHandle(STD_INPUT_HANDLE), &inputRecord, 1, &numEventsRead);
                     
-                    // 处理鼠标事件
                     if (inputRecord.EventType == MOUSE_EVENT && 
                         inputRecord.Event.MouseEvent.dwButtonState == FROM_LEFT_1ST_BUTTON_PRESSED) {
                         COORD mousePos = inputRecord.Event.MouseEvent.dwMousePosition;
                         Point clickPoint(mousePos.X, mousePos.Y);
                         
                         if (!isPointIn(clickPoint)) {
-                            // 点击在组件外部，结束编辑
                             editing = false;
                         } else {
-                            // 点击在组件内部，重新定位光标
                             int newClickX = clickPoint.x - point.x;
                             int newClickY = clickPoint.y - point.y;
                             
-                            // 重新计算光标位置
                             cursorPos = calculateCursorPosition(textLines, newClickX, newClickY, currentLineIdx, accumulatedWidth);
                             linePos = cursorPos - (currentLineIdx > 0 ? (cursorPos - accumulatedWidth) : 0);
                             
-                            // 重新定位光标
                             showAndPositionCursor(accumulatedWidth, currentLineIdx);
                         }
                     }
                     
-                    // 处理键盘事件
                     else if (inputRecord.EventType == KEY_EVENT && inputRecord.Event.KeyEvent.bKeyDown) {
                         handleKeyEvent(inputRecord.Event.KeyEvent, newText, currentText, 
                                      cursorPos, textLines, currentLineIdx, linePos, editing);
@@ -887,7 +820,6 @@ View::ComponentBase* View::InputText::onMouseEvent(MouseEvent& e)
                 }
             }
             
-            // 处理编辑后的文本
             if (!newText.empty()) {
                 setText(newText);
                 isPlaceholderVisible = false;
@@ -896,23 +828,18 @@ View::ComponentBase* View::InputText::onMouseEvent(MouseEvent& e)
                 isPlaceholderVisible = true;
             }
             
-            // 在处理文本变更后触发值改变事件
             if (textChanged != NULL && newText != currentText) {
-                // 创建值改变事件数据
                 ValueChangedEventArgs valueArgs(this, currentText, newText);
                 dispatchEvent(EventType::VALUE_CHANGE, &valueArgs);
                 
-                // 调用旧风格回调以保持向后兼容
                 textChanged(this);
             }
             
-            // 隐藏光标
             CONSOLE_CURSOR_INFO CursorInfo;
             GetConsoleCursorInfo(outputHandle, &CursorInfo);
             CursorInfo.bVisible = false;
             SetConsoleCursorInfo(outputHandle, &CursorInfo);
             
-            mouseEventFun = focusFun;
             unsetFocus();
             update();
         }
@@ -928,20 +855,17 @@ void View::LayoutBase::setShow(bool show)
     if (show)
     {
         ComponentBase::setShow(show);
-        // update();
     }
     else
     {
         ComponentBase::setShow(show);
-        //update();
     }
-    //ComponentBase::setShow(show);
 }
 
 bool View::LayoutBase::addComponent(std::shared_ptr<ComponentBase> com)
 {
     if (!com) return false;
-    ComponentBase* comPtr = com.get();
+    LOG_DEBUG(L"LayoutBase::addComponent: " + std::to_wstring(com->getWidth()) + L" " + std::to_wstring(com->getHeight()));
     com->setPoint(point.getAbsPoint(com->getPoint()));
     allComponents.emplace_back(com);
     return true;
@@ -955,6 +879,7 @@ bool View::LayoutBase::removeComponent(ComponentBase* comPtr)
                              });
 
     if (iter != allComponents.end()) {
+        iter->reset(); // 释放智能指针
         allComponents.erase(iter);
         return true;
     }
@@ -965,31 +890,26 @@ void View::LayoutBase::beginDraw()
 {
     for (auto& i : allComponents)
     {
-        i->draw();
+        i->update();
     }
 }
 
-void View::LayoutBase::update()
+void View::LayoutBase::update(bool force)
 {
-    if (isChange)
+    if (getShow())
     {
-        if (getShow())
-        {
-            draw();
-        }
-        else
-            clearDraw();
-        isChange = false;
-    }
-    else
         for (auto& i : allComponents)
         {
-            i->update();
+            i->update(force);
         }
+    }
+    else
+        clearDraw();
 }
 
-void View::LayoutBase::setPoint(Point point)
+void View::LayoutBase::setPoint(const Point& point)
 {
+    LOG_DEBUG(L"LayoutBase::setPoint: " + std::to_wstring(point.x) + L" " + std::to_wstring(point.y));
     int dx = point.x - this->point.x, dy = point.y - this->point.y;
     for (auto& i : allComponents)
     {
@@ -998,43 +918,30 @@ void View::LayoutBase::setPoint(Point point)
     ComponentBase::setPoint(point);
 }
 
-
 void View::LayoutBase::clear()
 {
     allComponents.clear();
 }
 
-View::LayoutBase::~LayoutBase()
-{
-}
 
-View::ComponentBase* View::LayoutBase::onMouseEvent(MouseEvent& e)
+void View::LayoutBase::onMouseEvent(MouseEvent& e)
 {
     if (!getShow())
-        return NULL;
-    ComponentBase* p = NULL;
+        return;
     for (auto& i : allComponents) {
-        ComponentBase* tmp = i->onMouseEvent(e);
-        if (tmp != NULL) {
-            p = tmp;
-        }
+        i->onMouseEvent(e);
     }
-    return p;
 }
 
-View::ComponentBase* View::LayoutBase::onKeyEvent(KeyEvent& e)
+void View::LayoutBase::onKeyEvent(KeyEvent& e)
 {
     if (!getShow())
-        return NULL;
+        return;
 
     ComponentBase* p = NULL;
     for (auto& i : allComponents) {
-        ComponentBase* tmp = i->onKeyEvent(e);
-        if (tmp != NULL) {
-            p = tmp;  // 保存非NULL的返回值
-        }
+        i->onKeyEvent(e);
     }
-    return p;  // 返回最后一个响应的组件
 }
 
 /*-----------------Span-----------------*/
@@ -1054,11 +961,10 @@ bool View::Span::addComponent(std::shared_ptr<ComponentBase> com)
 {
     if (!com || currentWidth + com->getWidth() + space > width)
         return false;
-    ComponentBase* comPtr = com.get();
-    if (LayoutBase::addComponent(std::move(com)))
+    if (LayoutBase::addComponent(com))
     {
-        comPtr->setPoint(point.getAbsPoint(currentWidth, padding[0]));
-        currentWidth += (comPtr->getWidth() + space);
+        com->setPoint(point.getAbsPoint(currentWidth, padding[0]));
+        currentWidth += (com->getWidth() + space);
         return true;
     }
     return false;
@@ -1098,13 +1004,15 @@ bool View::Div::addComponent(std::shared_ptr<ComponentBase> com)
 {
     if (!com || currentHeight + com->getHeight() + space > height)
         return false;
-    ComponentBase* comPtr = com.get();
-    if (LayoutBase::addComponent(std::move(com)))
+    LOG_DEBUG(L"Div::addComponent: " + std::to_wstring(currentHeight) + L" " + std::to_wstring(com->getHeight()) + L" " + std::to_wstring(space) + L" " + std::to_wstring(height));
+    if (LayoutBase::addComponent(com))
     {
-        comPtr->setPoint(point.getAbsPoint(padding[3], currentHeight));
-        currentHeight += (comPtr->getHeight() + space);
+        LOG_DEBUG(L"Div::addComponent setPoint:" + std::to_wstring(point.getAbsPoint(padding[3], currentHeight).x) + L" " + std::to_wstring(point.getAbsPoint(padding[3], currentHeight).y));
+        com->setPoint(point.getAbsPoint(padding[3], currentHeight));
+        currentHeight += (com->getHeight() + space);
         return true;
     }
+    LOG_DEBUG(L"Div::addComponent failed" );
     return false;
 }
 
@@ -1122,10 +1030,13 @@ bool View::Div::removeComponent(ComponentBase* com)
 
 void View::Div::setSpace(size_t space)
 {
+    LOG_DEBUG(L"Div::setSpace: " + std::to_wstring(space));
     this->space = space;
     currentHeight = padding[0];
+    int i = 0;
     for (auto& com : allComponents)
     {
+        i++;
         com->setPoint(point.getAbsPoint(padding[3], currentHeight));
         currentHeight += (com->getHeight() + space);
     }

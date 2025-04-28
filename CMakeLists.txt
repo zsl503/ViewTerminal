@@ -10,6 +10,7 @@ set(SOURCES
     src/pch.cpp
     src/App.cpp
     src/ComponentBase.cpp
+    src/Logger.cpp
 )
 
 # 定义头文件
@@ -17,6 +18,7 @@ set(HEADERS
     include/viewterminal/pch.h
     include/viewterminal/App.h
     include/viewterminal/ComponentBase.h
+    include/viewterminal/Logger.h
 )
 
 # 创建库
